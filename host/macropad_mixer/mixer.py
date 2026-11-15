@@ -10,7 +10,10 @@ from typing import Callable, Protocol
 from . import protocol
 from .backends.base import AppInfo, AudioBackend
 from .icons import IconCache, icon_msg
+from .displays.base import DisplayBackend, DisplayInfo, NoDisplays
 from .pins import PINNABLE_KEYS, Pins
+
+ALL_DISPLAYS = "*"
 
 log = logging.getLogger(__name__)
 
@@ -42,8 +45,15 @@ class Mixer:
         poll: float = 2.0,
         clock: Callable[[], float] = time.monotonic,
         pins: Pins | None = None,
+        displays: DisplayBackend | None = None,
+        bright_step: int = 5,
     ) -> None:
         self.backend = backend
+        self.displays = displays if displays is not None else NoDisplays()
+        self.bright_step = bright_step
+        self.display_list: list[DisplayInfo] = []
+        self.brightness: dict[str, int] = {}       # display id -> last known/set value 0-100
+        self._bright_signature: tuple | None = None
         self.pins = pins if pins is not None else Pins()  # in-memory unless a file is given
         self.link = link
         self.step = step
@@ -110,6 +120,40 @@ class Mixer:
     def send_apps(self) -> None:
         self.link.send(protocol.encode_apps(self.layout()))
         self._last_apps_sent = self.clock()
+        self.send_brightness()
+
+    def send_brightness(self) -> None:
+        self._send({"t": "bright", "displays": [
+            {"id": d.id, "name": d.name[: protocol.MAX_NAME], "val": self.brightness.get(d.id)}
+            for d in self.display_list]})
+
+    def refresh_displays(self) -> None:
+        try:
+            displays = self.displays.list_displays()
+        except Exception:
+            log.exception("display backend failed")
+            return
+        self.display_list = displays
+        for d in displays:
+            if d.brightness is not None:
+                self.brightness[d.id] = max(0, min(100, int(d.brightness)))
+        signature = tuple((d.id, d.name, self.brightness.get(d.id)) for d in displays)
+        if signature != self._bright_signature:
+            if [s[:2] for s in signature] != [s[:2] for s in self._bright_signature or ()]:
+                log.info("displays: %s", ", ".join(f"{d.name} ({d.id})" for d in displays) or "(none)")
+            self._bright_signature = signature
+            self.send_brightness()
+
+    def _change_brightness(self, display_id: str, clicks: int) -> None:
+        targets = [d.id for d in self.display_list] if display_id == ALL_DISPLAYS else [display_id]
+        for did in targets:
+            if did not in {d.id for d in self.display_list}:
+                continue
+            value = max(0, min(100, self.brightness.get(did, 50) + clicks * self.bright_step))
+            self.brightness[did] = value
+            self._apply(lambda did=did, value=value: self.displays.set_brightness(did, value))
+        self._bright_signature = tuple((d.id, d.name, self.brightness.get(d.id)) for d in self.display_list)
+        self.send_brightness()
 
     def _send_vol(self, app_id: str) -> None:
         s = self._state(app_id)
@@ -195,6 +239,8 @@ class Mixer:
             log.debug("selected %s", msg["id"])
         elif t == "pin":
             self._toggle_pin(msg["k"], msg.get("id"))
+        elif t == "bdelta":
+            self._change_brightness(msg["id"], msg["d"])
 
     def _toggle_pin(self, key: int, app_id: str | None) -> None:
         name = next((a.name for a in self.apps if a.id == app_id), None)
@@ -243,6 +289,7 @@ class Mixer:
         if now - self._last_poll >= self.poll:
             self._last_poll = now
             self.refresh_apps()
+            self.refresh_displays()
         if now - self._last_apps_sent >= APPS_REFRESH:
             self.send_apps()
         self.send_icons()

@@ -10,7 +10,7 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-PINNABLE_KEYS = 12  # only the first page's keys can hold pins
+PINNABLE_KEYS = 11  # keys 1-11 of the first page; key 12 is reserved for brightness
 
 
 def default_path() -> Path:
@@ -24,7 +24,7 @@ def default_path() -> Path:
 
 
 class Pins:
-    """key index (0-11) -> {"id": app id, "name": last known name}."""
+    """key index (0-10) -> {"id": app id, "name": last known name}."""
 
     def __init__(self, path: Path | None = None) -> None:
         self.path = path

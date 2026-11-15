@@ -16,6 +16,8 @@ Using it:
   - Keys light up in the colour of an app that is playing sound.
   - Press a key: the OLED shows that app; turn the knob to change its volume only.
   - Press the knob: mute / unmute that app.
+  - Key 12 (bottom right) is screen brightness: press it and turn the knob. Press it
+    again to switch between all displays and each display.
   - Hold a key 1.5 s: pin the app to that key. Hold a pinned key, then press another
     key to move it there (same key = unpin, knob = cancel).
 

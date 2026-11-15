@@ -5,6 +5,7 @@
 # the USB CDC data port enabled in boot.py).
 import binascii
 import json
+import math
 import time
 
 import displayio
@@ -14,8 +15,12 @@ from adafruit_display_text import label
 from adafruit_macropad import MacroPad
 from rainbowio import colorwheel
 
-FW_VERSION = "0.5.0"
+FW_VERSION = "0.6.0"
 NUM_KEYS = 12
+APP_KEYS = 11  # keys 1-11 hold apps (key 11 flips pages when needed)
+BRIGHT_KEY = 11  # key 12 is always screen brightness
+BRIGHT = "@bright"  # `selected` value while brightness is selected (app ids never start with @)
+BRIGHT_COLOR = 0xFFB040
 HOST_TIMEOUT = 6.0  # seconds without any message -> host considered gone
 MAX_LINE = 4096
 DELTA_INTERVAL = 0.05  # batch knob clicks, send at most every 50 ms
@@ -116,15 +121,17 @@ key_down = {}  # key -> monotonic time pressed
 long_fired = set()  # keys whose long press already triggered
 note_text = ""
 note_until = 0.0
+displays = []  # [{"id", "name", "val"}] from the host's `bright` message
+bright_target = 0  # index into bright_targets()
 moving = None  # move mode: {"id", "name", "src" (slot), "since"} after holding a pinned key
 blink_phase = 0
 
 
 def layout():
     """Return (apps_per_page, paged) for the current app count."""
-    if len(apps) <= NUM_KEYS:
-        return NUM_KEYS, False
-    return NUM_KEYS - 1, True  # last key becomes "next page"
+    if len(apps) <= APP_KEYS:
+        return APP_KEYS, False
+    return APP_KEYS - 1, True  # key 11 becomes "next page"; key 12 stays brightness
 
 
 def page_count():
@@ -133,8 +140,10 @@ def page_count():
 
 
 def app_for_key(key):
+    if key == BRIGHT_KEY:
+        return "bright"
     per, paged = layout()
-    if paged and key == NUM_KEYS - 1:
+    if paged and key == APP_KEYS - 1:
         return "next"
     idx = page * per + key
     return apps[idx] if idx < len(apps) else None
@@ -152,6 +161,28 @@ def app_color(app_id):
 def scale(color, factor):
     r, g, b = (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF
     return (int(r * factor), int(g * factor), int(b * factor))
+
+
+def bright_targets():
+    """Display ids key 12 cycles through: "*" (all) first when there's more than one."""
+    ids = [d["id"] for d in displays]
+    return ["*"] + ids if len(ids) > 1 else ids
+
+
+def make_sun():
+    """32x32 sun icon for the brightness key."""
+    bmp = displayio.Bitmap(32, 32, 2)
+    for y in range(32):
+        for x in range(32):
+            if (x - 15.5) ** 2 + (y - 15.5) ** 2 <= 42:
+                bmp[x, y] = 1
+    for i in range(8):
+        a = i * math.pi / 4
+        for r in range(10, 15):
+            for w in (0, 0.6):  # two pixels wide
+                bmp[int(15.5 + r * math.cos(a) + w * math.sin(a)),
+                    int(15.5 + r * math.sin(a) - w * math.cos(a))] = 1
+    return bmp
 
 
 def find_app(app_id):
@@ -199,7 +230,7 @@ def read_messages():
 
 
 def handle(msg):
-    global apps, selected, page, dirty, note_text, note_until
+    global apps, selected, page, dirty, note_text, note_until, displays, bright_target
     kind = msg.get("t")
     if kind == "ping":
         send({"t": "pong"})
@@ -217,7 +248,7 @@ def handle(msg):
                 "run": a.get("run", True) is not False,
             })
             state[app_id] = {"vol": a.get("vol"), "mute": bool(a.get("mute"))}
-        if selected is not None and find_app(selected) is None:
+        if selected not in (None, BRIGHT) and find_app(selected) is None:
             selected = None
         for cache in (icons, colors):  # forget icons/colours of apps that went away
             for app_id in list(cache):
@@ -238,6 +269,16 @@ def handle(msg):
         if isinstance(msg.get("c"), int):
             colors[app_id] = msg["c"] & 0xFFFFFF
         dirty = True  # key colours may have changed
+    elif kind == "bright":
+        displays = [
+            {"id": str(d["id"]), "name": str(d.get("name") or d["id"])[:20], "val": d.get("val")}
+            for d in msg.get("displays", [])
+            if isinstance(d, dict) and "id" in d
+        ]
+        bright_target = min(bright_target, max(0, len(bright_targets()) - 1))
+        if not displays and selected == BRIGHT:
+            selected = None
+        dirty = True
     elif kind == "note":
         note_text = str(msg.get("text", ""))[:21]
         note_until = time.monotonic() + NOTE_TIME
@@ -253,12 +294,20 @@ def handle(msg):
 
 
 def on_key(key):
-    global selected, page, dirty, pending_clicks
+    global selected, page, dirty, pending_clicks, bright_target
     if moving is not None:
         finish_move(key)
         return
     target = app_for_key(key)
-    if target == "next":
+    if target == "bright":
+        if not displays:
+            show_note("No displays")
+        elif selected == BRIGHT:  # pressed again: next display
+            bright_target = (bright_target + 1) % len(bright_targets())
+        else:
+            selected = BRIGHT
+            pending_clicks = 0
+    elif target == "next":
         page = (page + 1) % page_count()
     elif target is not None:
         if target["id"] != selected:
@@ -291,6 +340,8 @@ def check_long_press(now):
         target = app_for_key(key)
         if target is None:
             show_note("Empty key")
+        elif target == "bright":
+            show_note("Key 12 is fixed")
         elif target == "next":
             continue
         elif target["pin"]:
@@ -303,6 +354,9 @@ def check_long_press(now):
 def finish_move(key):
     """Key pressed in move mode: the host pins the app there (same key = unpin)."""
     global moving, page, dirty
+    if app_for_key(key) == "bright":
+        show_note("Key 12 is fixed")
+        return
     if app_for_key(key) == "next":  # let the user flip pages while moving
         page = (page + 1) % page_count()
     else:
@@ -314,7 +368,12 @@ def finish_move(key):
 def flush_delta(now):
     global pending_clicks, last_delta_sent
     if pending_clicks and selected and now - last_delta_sent >= DELTA_INTERVAL:
-        send({"t": "delta", "id": selected, "d": pending_clicks})
+        if selected == BRIGHT:
+            targets = bright_targets()
+            if targets:
+                send({"t": "bdelta", "id": targets[bright_target % len(targets)], "d": pending_clicks})
+        else:
+            send({"t": "delta", "id": selected, "d": pending_clicks})
         pending_clicks = 0
         last_delta_sent = now
 
@@ -326,7 +385,10 @@ def render():
     # LEDs
     for key in range(NUM_KEYS):
         target = app_for_key(key) if connected else None
-        if target == "next":
+        if target == "bright":
+            level = 1.0 if selected == BRIGHT else DIM
+            macropad.pixels[key] = scale(BRIGHT_COLOR, level) if displays else 0
+        elif target == "next":
             macropad.pixels[key] = NEXT_PAGE_COLOR
         elif target is None:
             macropad.pixels[key] = 0
@@ -363,6 +425,11 @@ def render():
         status.text = "same key = unpin"
         bar.hidden = True
         return
+    if selected == BRIGHT and displays:
+        render_brightness()
+        if note_until:
+            status.text = note_text
+        return
     running = sum(1 for a in apps if a is not None and a["run"])
     app = find_app(selected) if selected else None
     pin_info = "pinned | " if app is not None and app["pin"] else ""
@@ -389,7 +456,27 @@ def render():
     bar.hidden = False
 
 
+def render_brightness():
+    targets = bright_targets()
+    target = targets[bright_target % len(targets)]
+    if target == "*":
+        name = "All displays"
+        vals = [d["val"] for d in displays if d["val"] is not None]
+        val = sum(vals) // len(vals) if vals else None
+    else:
+        d = next(d for d in displays if d["id"] == target)
+        name, val = d["name"], d["val"]
+    set_title("Brightness", SUN)
+    pct = " %d%%" % val if val is not None else ""
+    subtitle.text = name[: NAME_CHARS - len(pct)] + pct
+    status.text = "key 12: next display" if len(targets) > 1 else ""
+    draw_bar(val if val is not None else 0)
+    bar.hidden = val is None
+
+
 # ------------------------------------------------------------------- main ---
+
+SUN = make_sun()
 
 if port is not None:
     port.timeout = 0
@@ -447,7 +534,7 @@ while True:
     if macropad.encoder_switch_debounced.pressed and moving is not None:
         moving = None
         show_note("Move cancelled")
-    elif macropad.encoder_switch_debounced.pressed and connected and selected:
+    elif macropad.encoder_switch_debounced.pressed and connected and selected not in (None, BRIGHT):
         send({"t": "mute", "id": selected})
 
     if dirty:

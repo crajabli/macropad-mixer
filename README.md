@@ -3,8 +3,10 @@
 A hardware per-app volume mixer for the **Adafruit MacroPad RP2040**, like the Windows
 Volume Mixer on your desk, for macOS and Windows (Linux as a bonus).
 
-- Each of the 12 keys is automatically assigned an app that is currently playing audio,
-  most recently started first. With more than 12 apps the last key flips pages.
+- Keys 1-11 are automatically assigned apps that are playing audio, most recently started
+  first. With more than 11 apps, key 11 flips pages.
+- Key 12 is always screen brightness (built-in display and external monitors with DDC/CI):
+  press it, then turn the knob. Press it again to switch between all displays and each one.
 - Keys light up in each app's brand colour (taken from its icon).
 - Press a key: the app's logo, name and volume appear on the OLED and the key lights up.
 - Turn the knob: that app's volume changes in 5 % steps. Only that app, not the system volume.

@@ -28,6 +28,7 @@
 | `t` | Fields | Meaning |
 |-----|--------|---------|
 | `apps` | `apps`: list of `{id, name, vol, mute}` (max 33) | Full replacement of the app list. Sent on connect (after `hello`), whenever the set or order of apps changes, and at least every 30 s. |
+| `bright` | `displays`: list of `{id, name, val}` | Displays whose brightness can be set (built-in panel, DDC/CI monitors); `val` 0-100 or `null` if unknown. Sent with every `apps`, when the set of displays or a value changes (also changes made outside the MacroPad), and after each `bdelta`. Empty list = no brightness control. |
 | `note` | `text` (max 21 chars) | Short message the device shows on its status line for 2 s (e.g. "Pinned to key 3"). |
 | `vol` | `id`, `vol`, `mute` | Current state of one app (reply to `delta`/`mute`, or external change). |
 | `icon` | `id`, optional `w`, `h`, `b`, optional `c` | `c`: the app's brand colour for its key LED as an integer 0xRRGGBB. `w`/`h`/`b`: app icon as 1-bit pixels: `b` is base64 of packed rows (MSB = leftmost pixel, each row padded to whole bytes, 1 = lit). Currently 32×32 = 128 bytes. Sent once per app per connection (again after every `hello`), after the `apps` message that lists the app. Max side 32 px. Optional: apps without an icon get none. |
@@ -43,8 +44,16 @@
 | `sel` | `id` | A key was pressed and this app is now selected (informational). |
 | `delta` | `id`, `d` (int, ± clicks, non-zero) | Knob turned while `id` selected. Device may batch clicks (send at most every 50 ms). |
 | `mute` | `id` | Knob pressed: toggle mute of `id`. |
-| `pin` | `k` (slot index), `id` (app on that key, or `null` if empty) | Pin request. Held key with an unpinned app: pin it there. Held key with a pinned app enters move mode on the device; the next key press sends `pin` with that key's slot and the moving app's id. The host: `id` already pinned on `k` → unpin; `id` pinned elsewhere → move it (an app pinned on `k` swaps into the old key); otherwise pin it on `k`. It saves the pins and replies with a `note` and a new `apps`. Only slots 0–11 can hold pins. |
+| `bdelta` | `id` (display id, or `"*"` for all), `d` (±clicks, non-zero) | Knob turned while key 12 (brightness) is selected. The host applies `d` × brightness step (default 5 %) to the display(s) and replies with `bright`. |
+| `pin` | `k` (slot index), `id` (app on that key, or `null` if empty) | Pin request. Held key with an unpinned app: pin it there. Held key with a pinned app enters move mode on the device; the next key press sends `pin` with that key's slot and the moving app's id. The host: `id` already pinned on `k` → unpin; `id` pinned elsewhere → move it (an app pinned on `k` swaps into the old key); otherwise pin it on `k`. It saves the pins and replies with a `note` and a new `apps`. Only slots 0–10 (keys 1–11) can hold pins. |
 | `pong` | — | Reply to `ping`. |
+
+## Key 12: screen brightness
+
+Key 12 is permanently the brightness key; it can't hold apps or pins. Pressing it selects
+brightness (sun icon on the OLED); pressing it again cycles All displays → each display. The
+knob sends `bdelta` for the shown target. Apps use keys 1-11; with more than 11 slots the device
+pages with 10 apps per page and key 11 as "next page".
 
 ## Key layout and pins
 
@@ -57,8 +66,8 @@ an entry may be `null` (an empty key). Entries may carry:
 
 Pinned apps take their keys; all other apps fill the free slots most-recent first. Pins are
 saved by the host (`pins.json` in the user's app-config directory) so they survive restarts.
-With more than 12 slots the device pages (keys 1–11 per page, key 12 = next page), so a pin on
-key 12 moves to page 2 while paging is needed.
+With more than 11 slots the device pages (keys 1–10 per page, key 11 = next page), so a pin on
+key 11 moves to page 2 while paging is needed.
 
 ## Connection state
 

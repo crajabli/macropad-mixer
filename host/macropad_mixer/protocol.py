@@ -14,7 +14,7 @@ MAX_NAME = 20
 
 # Device -> host message types we understand; anything else is ignored.
 # ("ping" isn't in v1's device->host table, but we answer it with "pong" if it arrives.)
-DEVICE_TYPES = {"hello", "sel", "delta", "mute", "pong", "ping", "pin"}
+DEVICE_TYPES = {"hello", "sel", "delta", "mute", "pong", "ping", "pin", "bdelta"}
 
 
 def encode(msg: dict[str, Any]) -> bytes:
@@ -66,13 +66,17 @@ def decode(line: bytes | str) -> dict[str, Any] | None:
     t = msg["t"]
     if t in ("sel", "delta", "mute") and not isinstance(msg.get("id"), str):
         return None
+    if t in ("delta", "mute") and msg["id"].startswith("@"):  # device-side pseudo ids
+        return None
     if t == "pin":
         k = msg.get("k")
         if not isinstance(k, int) or isinstance(k, bool) or k < 0:
             return None
         if msg.get("id") is not None and not isinstance(msg.get("id"), str):
             return None
-    if t == "delta":
+    if t == "bdelta" and not isinstance(msg.get("id"), str):
+        return None
+    if t in ("delta", "bdelta"):
         d = msg.get("d")
         if not isinstance(d, int) or isinstance(d, bool) or d == 0:
             return None

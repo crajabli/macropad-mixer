@@ -87,7 +87,7 @@ def test_hello_gets_apps_and_ping_gets_pong(env):
     link.push(t="unknown_type", foo=1)
     mixer.tick()
     sent = link.take()
-    assert [m["t"] for m in sent] == ["apps", "pong"]
+    assert [m["t"] for m in sent] == ["apps", "bright", "pong"]
 
 
 def test_delta_clamps_and_replies_vol(env):
