@@ -11,6 +11,7 @@
   --line: #d9dcd4;
   --accent: #0a7d5a;
   --accent-soft: #dcefe6;
+  --warn: #b4630a;
   --oled: #050605;
   --oled-fg: #e8f0ff;
   --case: #26282a;
@@ -21,13 +22,13 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #121412; --surface: #1a1d1a; --fg: #e7eae4; --muted: #9aa197;
-    --line: #2d322d; --accent: #4fd1a0; --accent-soft: #173327; --case: #0c0d0c;
+    --line: #2d322d; --accent: #4fd1a0; --accent-soft: #173327; --warn: #f0a050; --case: #0c0d0c;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #121412; --surface: #1a1d1a; --fg: #e7eae4; --muted: #9aa197;
-  --line: #2d322d; --accent: #4fd1a0; --accent-soft: #173327; --case: #0c0d0c;
+  --line: #2d322d; --accent: #4fd1a0; --accent-soft: #173327; --warn: #f0a050; --case: #0c0d0c;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -60,19 +61,21 @@ section { display: grid; gap: 18px; }
 /* device mock */
 .device { background: var(--case); border-radius: 18px; padding: 18px; display: grid; gap: 14px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.18); max-width: 300px; justify-self: center; width: 100%; }
 .top { display: grid; grid-template-columns: 1fr 64px; gap: 14px; align-items: center; }
-.oled { background: var(--oled); border-radius: 4px; aspect-ratio: 2 / 1; padding: 8px 10px; font-family: var(--mono); color: var(--oled-fg); display: grid; align-content: space-between; min-width: 0; }
-.oled .name { font-size: 1.05rem; font-weight: 600; }
-.oled .sub { font-size: 0.7rem; }
-.oled .bar { height: 7px; border: 1px solid var(--oled-fg); }
+.oled { background: var(--oled); border-radius: 4px; aspect-ratio: 2 / 1; padding: 6px 8px; font-family: var(--mono); color: var(--oled-fg); display: grid; grid-template-columns: 30px minmax(0, 1fr); grid-template-rows: auto auto 1fr auto; column-gap: 6px; min-width: 0; }
+.oled .logo { grid-row: 1 / 3; width: 30px; height: 30px; border: 1.5px solid var(--oled-fg); border-radius: 50%; display: grid; place-items: center; font-size: 0.7rem; font-weight: 600; }
+.oled .name { font-size: 0.72rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.oled .sub { font-size: 0.64rem; }
+.oled .bar { grid-column: 1 / -1; align-self: center; height: 6px; border: 1px solid var(--oled-fg); }
 .oled .bar span { display: block; height: 100%; background: var(--oled-fg); width: 60%; transition: width 120ms; }
-.oled .stat { font-size: 0.62rem; opacity: 0.85; }
+.oled .stat { grid-column: 1 / -1; font-size: 0.58rem; opacity: 0.85; }
 .knob { width: 64px; height: 64px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #5a5e60, #1d1f20 70%); border: 2px solid #3a3d3f; position: relative; cursor: grab; }
 .knob::after { content: ""; position: absolute; top: 6px; left: 50%; width: 3px; height: 14px; background: #cfd4d6; transform: translateX(-50%); border-radius: 2px; }
 .keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.key { aspect-ratio: 1; border-radius: 6px; border: 0; background: #3b3f41; color: #dfe3e5; font-family: var(--mono); font-size: 0.6rem; display: grid; place-items: end center; padding: 4px; cursor: pointer; box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.35); position: relative; overflow: hidden; }
-.key[data-on]::before { content: ""; position: absolute; inset: 0; background: var(--glow); opacity: 0.28; }
+.key { aspect-ratio: 1; border-radius: 6px; border: 0; background: #3b3f41; color: #dfe3e5; font-family: var(--mono); font-size: 0.58rem; display: grid; place-items: end center; padding: 4px; cursor: pointer; box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.35); position: relative; overflow: hidden; }
+.key[data-on]::before { content: ""; position: absolute; inset: 0; background: var(--glow); opacity: 0.25; }
 .key[aria-pressed="true"]::before { opacity: 0.85; }
 .key span { position: relative; }
+.key .pin { position: absolute; top: 3px; right: 4px; font-size: 0.55rem; }
 .hint { font-size: 0.8rem; color: var(--muted); text-align: center; }
 
 /* diagram */
@@ -97,26 +100,33 @@ td code { white-space: nowrap; }
 .plat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
 .pill { justify-self: start; font-family: var(--mono); font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
 .pill.easy { color: var(--accent); }
-.pill.hard { color: #b4630a; }
+.pill.hard { color: var(--warn); }
 .plat ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 0.92rem; }
+
+/* install steps */
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; counter-reset: s; }
+.step { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.step::before { counter-increment: s; content: counter(s); font-family: var(--mono); color: var(--accent); font-weight: 600; }
+.step p { font-size: 0.92rem; color: var(--muted); }
 
 /* decisions & roadmap */
 .decisions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
-.dec { border-top: 3px solid var(--accent); padding-top: 10px; display: grid; gap: 4px; min-width: 0; }
+.dec { border-top: 3px solid var(--accent); padding-top: 10px; display: grid; gap: 4px; align-content: start; min-width: 0; }
 .dec b { font-family: var(--display); font-size: 1.05rem; }
 .dec span { color: var(--muted); font-size: 0.92rem; }
-.road { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: step; }
+.road { list-style: none; margin: 0; padding: 0; display: grid; counter-reset: step; }
 .road li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .road li::before { counter-increment: step; content: counter(step); font-family: var(--mono); color: var(--muted); }
-.road .st { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+.road .st { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); white-space: nowrap; }
 .road .st.done { color: var(--accent); }
+.road .st.wait { color: var(--warn); }
 footer { color: var(--muted); font-size: 0.85rem; }
 
 @media (max-width: 720px) {
   .hero { grid-template-columns: 1fr; }
-  .platforms, .decisions { grid-template-columns: 1fr; }
+  .platforms, .decisions, .steps { grid-template-columns: 1fr; }
   .road li { grid-template-columns: 28px minmax(0, 1fr); }
-  .road .st { grid-column: 2; }
+  .road .st { grid-column: 2; white-space: normal; }
 }
 @media (prefers-reduced-motion: reduce) { .oled .bar span { transition: none; } }
 </style>
@@ -126,7 +136,7 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <div class="hero-text">
       <div class="eyebrow">Adafruit MacroPad RP2040 · CircuitPython · Python</div>
       <h1>MacroPad Mixer</h1>
-      <p class="lede">A volume mixer you can put your hand on. Every key becomes an app that is playing sound, and the knob turns that app up or down without touching the rest of your system audio. Works on macOS and Windows.</p>
+      <p class="lede">A volume mixer you can put your hand on. Every key becomes an app that is playing sound, shown with its logo and brand colour, and the knob turns that app up or down without touching the rest of your audio. Key 12 does screen brightness. Works on macOS and Windows.</p>
       <div class="links">
         <a class="btn primary" href="https://github.com/crajabli/macropad-mixer">GitHub repo</a>
         <a class="btn" href="https://github.com/crajabli/macropad-mixer/blob/main/docs/protocol.md">Protocol spec</a>
@@ -136,16 +146,17 @@ footer { color: var(--muted); font-size: 0.85rem; }
       <div class="device" role="group" aria-label="Interactive MacroPad mock-up">
         <div class="top">
           <div class="oled" aria-live="polite">
+            <div class="logo" id="oled-logo">S</div>
             <div class="name" id="oled-name">Spotify</div>
             <div class="sub" id="oled-sub">Volume 60%</div>
             <div class="bar"><span id="oled-bar"></span></div>
             <div class="stat" id="oled-stat">5 apps</div>
           </div>
-          <button class="knob" id="knob" aria-label="Knob: click to mute, scroll or use arrow keys to change volume"></button>
+          <button class="knob" id="knob" aria-label="Knob: scroll or use arrow keys to turn, click to press"></button>
         </div>
         <div class="keys" id="keys"></div>
       </div>
-      <p class="hint">Example data. Click a key, scroll on the knob, click the knob to mute.</p>
+      <p class="hint">Example data. Click a key, scroll on the knob, click the knob to mute. Key 12 is brightness.</p>
     </div>
   </header>
 
@@ -155,47 +166,67 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <div class="tbl"><table>
       <thead><tr><th>You do</th><th>MacroPad shows</th><th>Computer does</th></tr></thead>
       <tbody>
-        <tr><td>Plug it in</td><td>"Waiting for host…" until the daemon connects</td><td>Daemon finds the data serial port and sends the app list</td></tr>
-        <tr><td>Just look</td><td>One dimly lit key per audio app, newest first, each app with its own color</td><td>Re-checks running audio apps every 2 s</td></tr>
-        <tr><td>Press a key</td><td>App name, volume % and a bar on the OLED; that key glows bright</td><td>Notes the selection</td></tr>
+        <tr><td>Plug it in</td><td>"Waiting for host…" for a second or two</td><td>The background service finds the MacroPad and sends the app list, logos and colours</td></tr>
+        <tr><td>Just look</td><td>Keys 1–11 lit dimly in each app's brand colour, newest app first</td><td>Re-checks running audio apps every 2 s</td></tr>
+        <tr><td>Press a key</td><td>App logo, name, volume % and a bar; the key glows bright</td><td>Notes the selection</td></tr>
         <tr><td>Turn the knob</td><td>Volume updates in 5% steps</td><td>Sets that one app's volume, not the master</td></tr>
         <tr><td>Press the knob</td><td>"MUTED", key turns red</td><td>Toggles that app's mute</td></tr>
-        <tr><td>More than 12 apps</td><td>Keys 1–11 are apps, key 12 flips to the next page</td><td>Sends up to 33 apps</td></tr>
+        <tr><td>Pause an app</td><td>Nothing moves: the app keeps its key until you quit it</td><td>Keeps the app while its process is alive</td></tr>
+        <tr><td>Hold a key 1.5 s</td><td>"Pinned to key N"</td><td>Saves the pin; the app always lives on that key, dimly lit when not running</td></tr>
+        <tr><td>Hold a pinned key, then press another key</td><td>Key blinks, "Move Spotify"; then "Moved to key N"</td><td>Moves the pin, swapping with another pinned app. Same key unpins, knob cancels</td></tr>
+        <tr><td>Press key 12</td><td>Sun icon, "Brightness", display name and %</td><td>The knob now sets screen brightness; press 12 again for All → each display</td></tr>
+        <tr><td>More than 11 apps</td><td>Key 11 flips to the next page</td><td>Sends up to 33 apps</td></tr>
       </tbody>
     </table></div>
   </section>
 
   <section>
+    <div class="eyebrow">Install</div>
+    <h2>One double-click per computer</h2>
+    <p>No operating system runs software just because a USB device was plugged in, so the MacroPad carries its own installer on its CIRCUITPY drive. After that, everything is automatic.</p>
+    <div class="steps">
+      <div class="step"><h3>Open the drive</h3><p>Plug in the MacroPad and open CIRCUITPY. It holds the installers, a copy of the background service and a short how-to.</p></div>
+      <div class="step"><h3>Double-click the installer</h3><p><code>Install MacroPad Mixer (Mac).command</code> or <code>(Windows).cmd</code>. It sets up a private Python and the service, installs FineTune on Mac and turns on autostart.</p></div>
+      <div class="step"><h3>Done for good</h3><p>The service starts at every login and finds the MacroPad within 2 s of plugging it in. On Mac it also starts FineTune. Mac asks once to allow system audio.</p></div>
+    </div>
+  </section>
+
+  <section>
     <div class="eyebrow">Architecture</div>
     <h2>Two programs and a USB cable</h2>
-    <p>The MacroPad only handles buttons, lights and the screen. A small Python daemon on the computer does the audio work, with one backend per operating system. They talk over a second USB serial port that CircuitPython enables in <code>boot.py</code>, so the normal console stays free for debugging.</p>
+    <p>The MacroPad handles keys, lights and the screen. A small Python service on the computer does the audio and display work, with one backend per operating system. They talk over a second USB serial port that CircuitPython enables in <code>boot.py</code>, so the normal console stays free for debugging.</p>
     <div class="diagram">
-      <svg viewBox="0 0 720 230" role="img" aria-label="MacroPad connects over USB serial to the host daemon, which uses FineTune on macOS, pycaw on Windows and pulsectl on Linux">
-        <rect class="box" x="10" y="60" width="190" height="110" rx="10"/>
-        <text x="105" y="95" text-anchor="middle" font-weight="700">MacroPad</text>
-        <text class="mono" x="105" y="120" text-anchor="middle" font-size="12">CircuitPython</text>
-        <text class="mono" x="105" y="140" text-anchor="middle" font-size="12">keys · knob · OLED</text>
-        <path class="arrow" d="M205 115 H 300"/>
-        <path class="arrow" d="M290 108 L300 115 L290 122"/>
-        <path class="arrow" d="M215 108 L205 115 L215 122"/>
-        <text class="mono" x="252" y="102" text-anchor="middle" font-size="11">USB serial</text>
-        <text class="mono" x="252" y="136" text-anchor="middle" font-size="11">JSON lines</text>
-        <rect class="hl" x="305" y="60" width="170" height="110" rx="10"/>
-        <text x="390" y="100" text-anchor="middle" font-weight="700">Host daemon</text>
-        <text class="mono" x="390" y="124" text-anchor="middle" font-size="12">Python</text>
-        <text class="mono" x="390" y="144" text-anchor="middle" font-size="12">macropad-mixer</text>
-        <path class="arrow" d="M480 95 L540 40"/>
-        <path class="arrow" d="M480 115 H540"/>
-        <path class="arrow" d="M480 135 L540 190"/>
-        <rect class="box" x="545" y="15" width="165" height="52" rx="8"/>
-        <text x="627" y="37" text-anchor="middle" font-weight="600" font-size="14">macOS</text>
-        <text class="mono" x="627" y="56" text-anchor="middle" font-size="11">FineTune URL scheme</text>
-        <rect class="box" x="545" y="89" width="165" height="52" rx="8"/>
-        <text x="627" y="111" text-anchor="middle" font-weight="600" font-size="14">Windows</text>
-        <text class="mono" x="627" y="130" text-anchor="middle" font-size="11">pycaw · WASAPI</text>
-        <rect class="box" x="545" y="163" width="165" height="52" rx="8"/>
-        <text x="627" y="185" text-anchor="middle" font-weight="600" font-size="14">Linux (bonus)</text>
-        <text class="mono" x="627" y="204" text-anchor="middle" font-size="11">pulsectl · PipeWire</text>
+      <svg viewBox="0 0 720 250" role="img" aria-label="MacroPad connects over USB serial to the host service, which controls per-app volume and display brightness on macOS, Windows and Linux">
+        <rect class="box" x="10" y="70" width="190" height="110" rx="10"/>
+        <text x="105" y="105" text-anchor="middle" font-weight="700">MacroPad</text>
+        <text class="mono" x="105" y="130" text-anchor="middle" font-size="12">CircuitPython</text>
+        <text class="mono" x="105" y="150" text-anchor="middle" font-size="12">keys · knob · OLED</text>
+        <path class="arrow" d="M205 125 H 300"/>
+        <path class="arrow" d="M290 118 L300 125 L290 132"/>
+        <path class="arrow" d="M215 118 L205 125 L215 132"/>
+        <text class="mono" x="252" y="112" text-anchor="middle" font-size="11">USB serial</text>
+        <text class="mono" x="252" y="146" text-anchor="middle" font-size="11">JSON lines</text>
+        <rect class="hl" x="305" y="55" width="170" height="140" rx="10"/>
+        <text x="390" y="90" text-anchor="middle" font-weight="700">Host service</text>
+        <text class="mono" x="390" y="114" text-anchor="middle" font-size="12">Python, autostart</text>
+        <text class="mono" x="390" y="134" text-anchor="middle" font-size="12">app list · pins</text>
+        <text class="mono" x="390" y="154" text-anchor="middle" font-size="12">logos · colours</text>
+        <text class="mono" x="390" y="174" text-anchor="middle" font-size="12">brightness</text>
+        <path class="arrow" d="M480 100 L540 45"/>
+        <path class="arrow" d="M480 125 H540"/>
+        <path class="arrow" d="M480 150 L540 205"/>
+        <rect class="box" x="545" y="10" width="165" height="66" rx="8"/>
+        <text x="627" y="32" text-anchor="middle" font-weight="600" font-size="14">macOS</text>
+        <text class="mono" x="627" y="50" text-anchor="middle" font-size="11">FineTune · Core Audio</text>
+        <text class="mono" x="627" y="66" text-anchor="middle" font-size="11">DisplayServices · DDC</text>
+        <rect class="box" x="545" y="92" width="165" height="66" rx="8"/>
+        <text x="627" y="114" text-anchor="middle" font-weight="600" font-size="14">Windows</text>
+        <text class="mono" x="627" y="132" text-anchor="middle" font-size="11">pycaw · WASAPI</text>
+        <text class="mono" x="627" y="148" text-anchor="middle" font-size="11">WMI · dxva2 DDC</text>
+        <rect class="box" x="545" y="174" width="165" height="66" rx="8"/>
+        <text x="627" y="196" text-anchor="middle" font-weight="600" font-size="14">Linux (bonus)</text>
+        <text class="mono" x="627" y="214" text-anchor="middle" font-size="11">pulsectl · PipeWire</text>
+        <text class="mono" x="627" y="230" text-anchor="middle" font-size="11">no brightness yet</text>
       </svg>
     </div>
   </section>
@@ -203,51 +234,55 @@ footer { color: var(--muted); font-size: 0.85rem; }
   <section>
     <div class="eyebrow">Protocol v1</div>
     <h2>One JSON object per line</h2>
-    <p>The knob sends raw clicks; the computer turns them into volume and answers with the real value, so the computer is always the single source of truth.</p>
+    <p>The knob sends raw clicks; the computer turns them into volume or brightness and answers with the real value, so the computer is always the single source of truth.</p>
     <div class="tbl"><table>
       <thead><tr><th>Direction</th><th>Message</th><th>Meaning</th></tr></thead>
       <tbody>
-        <tr><td>Computer → pad</td><td><code>{"t":"apps","apps":[…]}</code></td><td>Full app list: id, name, vol, mute; newest first</td></tr>
+        <tr><td>Computer → pad</td><td><code>{"t":"apps","apps":[…]}</code></td><td>One entry per key slot: id, name, vol, mute, plus <code>pin</code> / <code>run:false</code>; <code>null</code> = empty key</td></tr>
+        <tr><td>Computer → pad</td><td><code>{"t":"icon","id":…,"b":…,"c":…}</code></td><td>32×32 1-bit logo (base64) and brand colour for the key LED</td></tr>
         <tr><td>Computer → pad</td><td><code>{"t":"vol","id":…,"vol":55,"mute":false}</code></td><td>Current state of one app</td></tr>
+        <tr><td>Computer → pad</td><td><code>{"t":"bright","displays":[…]}</code></td><td>Displays with their brightness, for key 12</td></tr>
+        <tr><td>Computer → pad</td><td><code>{"t":"note","text":"Pinned to key 3"}</code></td><td>Short message on the status line for 2 s</td></tr>
         <tr><td>Computer → pad</td><td><code>{"t":"ping"}</code></td><td>Heartbeat every 2 s; 6 s of silence means the computer is gone</td></tr>
-        <tr><td>Pad → computer</td><td><code>{"t":"hello","fw":"0.1.0"}</code></td><td>Sent on boot and reconnect</td></tr>
+        <tr><td>Pad → computer</td><td><code>{"t":"hello","fw":"0.6.0"}</code></td><td>Sent on boot and reconnect</td></tr>
         <tr><td>Pad → computer</td><td><code>{"t":"delta","id":…,"d":-2}</code></td><td>Knob clicks for the selected app, batched every 50 ms</td></tr>
         <tr><td>Pad → computer</td><td><code>{"t":"mute","id":…}</code></td><td>Knob pressed: toggle mute</td></tr>
+        <tr><td>Pad → computer</td><td><code>{"t":"bdelta","id":"*","d":1}</code></td><td>Knob clicks for brightness: one display, or <code>*</code> for all</td></tr>
+        <tr><td>Pad → computer</td><td><code>{"t":"pin","k":4,"id":…}</code></td><td>Long-press or move: pin, move, swap or unpin</td></tr>
       </tbody>
     </table></div>
   </section>
 
   <section>
     <div class="eyebrow">Platforms</div>
-    <h2>Per-app volume on each OS</h2>
+    <h2>How each OS does it</h2>
     <div class="platforms">
-      <div class="plat">
-        <span class="pill easy">straightforward</span>
-        <h3>Windows</h3>
-        <ul>
-          <li><b>pycaw</b> wraps the same audio-session API the Windows Volume Mixer uses.</li>
-          <li>Group sessions by exe name: Chrome and Discord open several.</li>
-          <li>Scan every active output device, not only the default one.</li>
-          <li>Friendly names come from the exe's file description.</li>
-        </ul>
-      </div>
       <div class="plat">
         <span class="pill hard">the hard part</span>
         <h3>macOS</h3>
         <ul>
-          <li>No public per-app volume API. Apps that do it use <b>Core Audio process taps</b> (macOS 14.2+).</li>
-          <li>v1 drives <b>FineTune</b> (free, open source, macOS 15+) through its <code>finetune://</code> URL scheme.</li>
-          <li>FineTune can't report volumes back, so the daemon remembers them.</li>
-          <li>Later: our own Swift helper app using taps directly.</li>
+          <li>No public per-app volume API. <b>FineTune</b> (free, open source, macOS 15+) does it with Core Audio process taps; we drive it through its <code>finetune://</code> URL scheme.</li>
+          <li>Playing apps are listed through Core Audio directly.</li>
+          <li>Logos come from AppKit; brand colours from the app's own icon file, since your icon style may tint the rendered icon grey.</li>
+          <li>Brightness: built-in panel via DisplayServices, external monitors via DDC/CI on Apple Silicon.</li>
         </ul>
       </div>
       <div class="plat">
         <span class="pill easy">straightforward</span>
+        <h3>Windows</h3>
+        <ul>
+          <li><b>pycaw</b> wraps the same audio-session API the Volume Mixer uses; sessions are grouped per program across every output device.</li>
+          <li>Logos and colours come from each program's own icon.</li>
+          <li>Brightness: laptop panel via WMI, external monitors via the Windows DDC/CI API.</li>
+        </ul>
+      </div>
+      <div class="plat">
+        <span class="pill easy">bonus</span>
         <h3>Linux</h3>
         <ul>
           <li><b>pulsectl</b> sets per-stream volume on PulseAudio and PipeWire.</li>
-          <li>Streams are grouped by application name.</li>
-          <li>Untested so far.</li>
+          <li>Paused apps keep their keys even though many drop their stream.</li>
+          <li>No logos or brightness yet. Untested.</li>
         </ul>
       </div>
     </div>
@@ -257,21 +292,26 @@ footer { color: var(--muted); font-size: 0.85rem; }
     <div class="eyebrow">Decisions</div>
     <h2>Settled so far</h2>
     <div class="decisions">
-      <div class="dec"><b>FineTune first on macOS</b><span>Working per-app volume today; replace with a Swift helper later.</span></div>
-      <div class="dec"><b>Newest apps first</b><span>Key 1 is the app that started most recently.</span></div>
-      <div class="dec"><b>5% per knob click</b><span>20 clicks from silent to full. Changeable with <code>--step</code>.</span></div>
+      <div class="dec"><b>FineTune first on macOS</b><span>Working per-app volume today; a Swift helper of our own could replace it later.</span></div>
+      <div class="dec"><b>Newest apps first</b><span>Unpinned apps fill free keys, most recently started first.</span></div>
+      <div class="dec"><b>5% per knob click</b><span>For volume and brightness. Changeable with <code>--step</code> and <code>--bright-step</code>.</span></div>
+      <div class="dec"><b>Pin from the device</b><span>Long-press to pin, hold and press to move. Pins are saved on the computer.</span></div>
+      <div class="dec"><b>Key 12 is brightness</b><span>Fixed for good, so it is always under your thumb.</span></div>
+      <div class="dec"><b>Installer on the MacroPad</b><span>One double-click per computer; no downloads from the repo needed.</span></div>
     </div>
   </section>
 
   <section>
     <div class="eyebrow">Roadmap</div>
-    <h2>Build order</h2>
+    <h2>Status</h2>
     <ol class="road">
-      <li><span>Firmware: data port, key assignment, OLED, knob, mute</span><span class="st done">working</span></li>
-      <li><span>Daemon core: port discovery, protocol, auto-assigning apps to keys</span><span class="st done">working</span></li>
-      <li><span>macOS backend: list playing apps via Core Audio, volume via FineTune</span><span class="st done">working</span></li>
-      <li><span>Windows backend with pycaw</span><span class="st">written, needs a Windows test</span></li>
-      <li><span>Own Swift helper on macOS, pinned "favorite" keys, Linux testing</span><span class="st">later</span></li>
+      <li><span>Firmware: keys, knob, OLED, logos, brand colours, pins, brightness key</span><span class="st done">working</span></li>
+      <li><span>Host service: app list, paused apps keep keys, pins, autostart</span><span class="st done">working</span></li>
+      <li><span>macOS: per-app volume via FineTune, logos, built-in brightness</span><span class="st done">working</span></li>
+      <li><span>One-click installer carried on the MacroPad (Mac)</span><span class="st done">working</span></li>
+      <li><span>macOS external monitor brightness (DDC/CI)</span><span class="st wait">needs a monitor to test</span></li>
+      <li><span>Windows: volume, logos, brightness, installer</span><span class="st wait">needs a Windows test</span></li>
+      <li><span>Screen off when idle, own Swift helper on macOS, Linux testing</span><span class="st">later</span></li>
     </ol>
   </section>
 
@@ -281,29 +321,41 @@ footer { color: var(--muted); font-size: 0.85rem; }
 <script>
 (() => {
   const apps = [
-    { name: "Spotify", vol: 60, hue: 140 },
+    { name: "Spotify", vol: 60, hue: 141, pin: true },
     { name: "Chrome", vol: 100, hue: 45 },
     { name: "Discord", vol: 75, hue: 235 },
-    { name: "Zoom", vol: 90, hue: 205 },
-    { name: "Music", vol: 40, hue: 350 },
+    { name: "Zoom", vol: 90, hue: 215 },
+    { name: "Safari", vol: 40, hue: 205 },
   ].map(a => ({ ...a, mute: false }));
-  let sel = 0;
+  let bright = 70;
+  let sel = 0; // app index, or "bright"
+  const BRIGHT_KEY = 11;
   const keys = document.getElementById("keys");
+  const logoEl = document.getElementById("oled-logo");
   const nameEl = document.getElementById("oled-name");
   const subEl = document.getElementById("oled-sub");
   const barEl = document.getElementById("oled-bar");
   const statEl = document.getElementById("oled-stat");
-  statEl.textContent = apps.length + " apps";
 
   const buttons = [];
   for (let i = 0; i < 12; i++) {
     const b = document.createElement("button");
     b.className = "key";
-    const app = apps[i];
-    if (app) {
+    const label = document.createElement("span");
+    b.appendChild(label);
+    if (i === BRIGHT_KEY) {
       b.dataset.on = "";
-      b.innerHTML = "<span></span>";
-      b.querySelector("span").textContent = app.name;
+      label.textContent = "☀ Bright";
+      b.setAttribute("aria-label", "Key 12: screen brightness");
+      b.addEventListener("click", () => { sel = "bright"; render(); });
+    } else if (apps[i]) {
+      b.dataset.on = "";
+      label.textContent = apps[i].name;
+      if (apps[i].pin) {
+        const p = document.createElement("span");
+        p.className = "pin"; p.textContent = "PIN"; p.setAttribute("aria-hidden", "true");
+        b.appendChild(p);
+      }
       b.addEventListener("click", () => { sel = i; render(); });
     } else {
       b.disabled = true;
@@ -315,25 +367,36 @@ footer { color: var(--muted); font-size: 0.85rem; }
 
   function render() {
     apps.forEach((a, i) => {
-      const b = buttons[i];
-      b.style.setProperty("--glow", a.mute ? "hsl(0 90% 55%)" : `hsl(${a.hue} 85% 55%)`);
-      b.setAttribute("aria-pressed", String(i === sel));
+      buttons[i].style.setProperty("--glow", a.mute ? "hsl(0 90% 55%)" : `hsl(${a.hue} 85% 55%)`);
+      buttons[i].setAttribute("aria-pressed", String(i === sel));
     });
+    buttons[BRIGHT_KEY].style.setProperty("--glow", "hsl(36 100% 62%)");
+    buttons[BRIGHT_KEY].setAttribute("aria-pressed", String(sel === "bright"));
+    if (sel === "bright") {
+      logoEl.textContent = "☀";
+      nameEl.textContent = "Brightness";
+      subEl.textContent = `Built-in ${bright}%`;
+      barEl.style.width = bright + "%";
+      statEl.textContent = "key 12: next display";
+      return;
+    }
     const a = apps[sel];
+    logoEl.textContent = a.name[0];
     nameEl.textContent = a.name;
-    subEl.textContent = a.mute ? `MUTED  (${a.vol}%)` : `Volume ${a.vol}%`;
+    subEl.textContent = a.mute ? `MUTED (${a.vol}%)` : `Volume ${a.vol}%`;
     barEl.style.width = a.vol + "%";
+    statEl.textContent = (a.pin ? "pinned | " : "") + apps.length + " apps";
   }
 
   function nudge(clicks) {
-    const a = apps[sel];
-    a.vol = Math.max(0, Math.min(100, a.vol + clicks * 5));
+    if (sel === "bright") bright = Math.max(0, Math.min(100, bright + clicks * 5));
+    else apps[sel].vol = Math.max(0, Math.min(100, apps[sel].vol + clicks * 5));
     render();
   }
 
   const knob = document.getElementById("knob");
   knob.addEventListener("wheel", e => { e.preventDefault(); nudge(e.deltaY < 0 ? 1 : -1); }, { passive: false });
-  knob.addEventListener("click", () => { apps[sel].mute = !apps[sel].mute; render(); });
+  knob.addEventListener("click", () => { if (sel !== "bright") { apps[sel].mute = !apps[sel].mute; render(); } });
   knob.addEventListener("keydown", e => {
     if (e.key === "ArrowUp" || e.key === "ArrowRight") { e.preventDefault(); nudge(1); }
     if (e.key === "ArrowDown" || e.key === "ArrowLeft") { e.preventDefault(); nudge(-1); }
