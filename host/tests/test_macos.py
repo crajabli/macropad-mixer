@@ -63,3 +63,22 @@ def test_finetune_itself_is_hidden():
 
     assert macos._is_system(macos.FINETUNE_BUNDLE_ID)
     assert not macos._is_system("com.spotify.client")
+
+
+def test_app_alive_follows_the_process():
+    import subprocess
+
+    from macropad_mixer.backends import macos
+
+    proc = subprocess.Popen(["/bin/sleep", "30"])
+    try:
+        backend = macos.MacBackend.__new__(macos.MacBackend)  # skip FineTune checks
+        backend._pids = {"x": {proc.pid: macos._pid_path(proc.pid)}}
+        assert backend.app_alive("x")
+        assert not backend.app_alive("unknown")
+        backend._pids["y"] = {proc.pid: "/some/other/binary"}  # PID reused by another program
+        assert not backend.app_alive("y")
+    finally:
+        proc.kill()
+        proc.wait()
+    assert not backend.app_alive("x")

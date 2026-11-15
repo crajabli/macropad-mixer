@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 
 PING_INTERVAL = 2.0
 APPS_REFRESH = 30.0
+FALLBACK_KEEP = 600.0  # backends without app_alive(): keep an app this long after it was listed
 TICK = 0.02
 
 
@@ -47,6 +48,9 @@ class Mixer:
         self.clock = clock
         self.state: dict[str, AppState] = {}  # kept even when apps disappear
         self.apps: list[AppInfo] = []
+        # Apps stay on their keys after they stop playing (e.g. paused) until they quit.
+        self._seen: dict[str, AppInfo] = {}        # last known info per app id
+        self._last_listed: dict[str, float] = {}   # clock() when the backend last listed it
         self._signature: tuple[tuple[str, str], ...] | None = None
         self._last_poll = float("-inf")
         self._last_ping = float("-inf")
@@ -87,6 +91,7 @@ class Mixer:
         except Exception:
             log.exception("backend.list_apps failed")
             return
+        apps = self._with_paused(apps)
         apps = sorted(apps, key=lambda a: (-a.started, a.name.lower()))[: protocol.MAX_APPS]
         changed_vol: list[str] = []
         for a in apps:
@@ -105,6 +110,32 @@ class Mixer:
         else:
             for app_id in changed_vol:  # external change (e.g. user moved a slider)
                 self._send_vol(app_id)
+
+    def _with_paused(self, apps: list[AppInfo]) -> list[AppInfo]:
+        """Add apps that dropped out of the backend's list but are still running."""
+        now = self.clock()
+        listed = {a.id: a for a in apps}
+        for a in apps:
+            self._seen[a.id] = a
+            self._last_listed[a.id] = now
+        alive = getattr(self.backend, "app_alive", None)
+        for app_id, info in list(self._seen.items()):
+            if app_id in listed:
+                continue
+            if alive is not None:
+                try:
+                    keep = bool(alive(app_id))
+                except Exception:
+                    log.debug("app_alive(%s) failed", app_id, exc_info=True)
+                    keep = False
+            else:
+                keep = now - self._last_listed[app_id] < FALLBACK_KEEP
+            if keep:  # vol/mute None: keep the daemon's own record, don't reset it
+                listed[app_id] = AppInfo(info.id, info.name, info.started)
+            else:
+                log.debug("app %s is gone", app_id)
+                del self._seen[app_id], self._last_listed[app_id]
+        return list(listed.values())
 
     # --- device messages ---------------------------------------------------
 

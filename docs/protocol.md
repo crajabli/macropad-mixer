@@ -86,7 +86,18 @@ class AudioBackend(Protocol):
     # optional:
     icon_inset: float                               # fraction to crop off each side first
     def icon_image(self, app_id: str) -> "PIL.Image.Image | None": ...
+    def app_alive(self, app_id: str) -> bool: ...  # is any process of this app still running?
 ```
+
+### Keeping paused apps on their keys
+
+`list_apps()` reports apps that are playing (or recently played) audio. When an app drops out of
+that list, for example because it was paused, the daemon keeps it (same slot, last known name and
+start time) as long as `backend.app_alive(app_id)` is true, i.e. until the app quits.
+`app_alive` must be cheap (it is called every poll for each kept app), must not raise, and should
+answer True for any process belonging to the app id (main process or helper), using the PIDs the
+backend saw in `list_apps()`. Backends without `app_alive` fall back to keeping an app for
+10 minutes after it was last listed.
 
 If a backend cannot read volume/mute (macOS + FineTune), it returns `None` and the daemon
 keeps its own record (initially 100 / unmuted).

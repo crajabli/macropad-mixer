@@ -143,8 +143,9 @@ def test_record_kept_when_app_disappears_and_returns(env):
     link.push(t="mute", id="old")
     mixer.tick()
     backend.remove("old")
-    clock.t += 2.0
+    clock.t += 2.0 + 600.0  # past FALLBACK_KEEP: the app is really gone from the keys
     mixer.tick()
+    assert "old" not in [x.id for x in mixer.apps]
     backend.add(AppInfo("old", "Old", 100.0))
     clock.t += 2.0
     link.take()
@@ -207,3 +208,57 @@ def test_load_backend():
     assert isinstance(load_backend("fake"), FakeBackend)
     with pytest.raises(ValueError):
         load_backend("nope")
+
+
+class PausableBackend(FakeBackend):
+    """Backend whose listing and liveness the test controls."""
+
+    def __init__(self, apps):
+        super().__init__(apps, report_volume=False)
+        self.listing = list(apps)
+        self.alive: set[str] = {a.id for a in apps}
+
+    def list_apps(self):
+        return list(self.listing)
+
+    def app_alive(self, app_id):
+        return app_id in self.alive
+
+
+def test_paused_app_keeps_its_slot_and_volume_until_it_quits():
+    backend = PausableBackend(apps3())
+    link, clock = FakeLink(), Clock()
+    mixer = Mixer(backend, link, step=5, poll=2.0, clock=clock)
+    mixer.tick()
+    link.push(t="delta", id="mid", d=-4)
+    mixer.tick()
+    link.take()
+
+    backend.listing = [a for a in backend.listing if a.id != "mid"]  # "mid" paused
+    clock.t += 2.1
+    mixer.tick()
+    assert [a.id for a in mixer.apps] == ["new", "mid", "old"]       # still on its key
+    assert link.take("apps") == []                                   # nothing changed for the device
+    assert mixer.state["mid"].vol == 80
+
+    backend.alive.discard("mid")                                      # "mid" quit
+    clock.t += 2.1
+    mixer.tick()
+    assert [a.id for a in mixer.apps] == ["new", "old"]
+    assert [a["id"] for a in link.take("apps")[0]["apps"]] == ["new", "old"]
+
+
+def test_backend_without_app_alive_keeps_apps_for_a_while():
+    from macropad_mixer.mixer import FALLBACK_KEEP
+
+    backend = FakeBackend(apps3(), report_volume=False)
+    clock = Clock()
+    mixer = Mixer(backend, FakeLink(), poll=2.0, clock=clock)
+    mixer.tick()
+    backend.remove("old")
+    clock.t += 2.1
+    mixer.tick()
+    assert "old" in [a.id for a in mixer.apps]
+    clock.t += FALLBACK_KEEP
+    mixer.tick()
+    assert "old" not in [a.id for a in mixer.apps]

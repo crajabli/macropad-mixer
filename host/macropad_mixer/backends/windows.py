@@ -23,6 +23,11 @@ Design notes
   session cache is also per thread: a worker thread that calls ``set_volume``
   enumerates its own sessions once and reuses them afterwards.
 * Simple polling: ``list_apps`` re-enumerates every call; no notification callbacks.
+* ``app_alive`` (keeps paused apps on their keys, see docs/protocol.md) checks the PIDs
+  last seen in ``list_apps`` with psutil only -- no COM -- verifying each PID still
+  runs the same exe (PIDs are reused). If they are all gone it falls back to "any
+  process with that exe name", since e.g. Chrome's audio session may belong to a
+  helper process that exits while the main chrome.exe keeps running.
 
 Everything Windows-specific (pycaw, comtypes, win32api) is imported lazily, so this
 module -- and the pure helpers at the top, which the tests exercise -- import fine on
@@ -129,6 +134,17 @@ def group_sessions(records: Iterable[SessionRecord]) -> dict[str, AppGroup]:
             continue
         groups.setdefault(rec.app_id, AppGroup(rec.app_id)).sessions.append(rec)
     return groups
+
+
+def process_matches_app(process_name: str | None, app_id: str) -> bool:
+    """True if a process named ``process_name`` (e.g. ``Chrome.exe``) belongs to ``app_id``.
+
+    Used by ``app_alive`` to tell a live process from a reused PID that now belongs to some
+    other exe.
+    """
+    if not process_name or not app_id:
+        return False
+    return app_id_for_exe(process_name) == app_id
 
 
 def volume_to_percent(scalar: float) -> int:
@@ -310,6 +326,10 @@ class WindowsBackend:
         # session cache in self._tls is per thread).
         self._exe_paths: dict[str, str] = {}
         self._name_cache: dict[str, str] = {}  # exe path (or exe name) -> friendly name
+        # app id -> PIDs of its sessions as of the last listing that included it (shared across
+        # threads, guarded by _name_lock). Entries are never dropped: app_alive needs them after
+        # the app stops appearing in list_apps.
+        self._pids: dict[str, set[int]] = {}
         self._name_lock = threading.Lock()
 
     # ---- COM / per-thread state -------------------------------------------
@@ -507,10 +527,41 @@ class WindowsBackend:
                 log.warning("skipping app %s", group.app_id, exc_info=True)
                 continue
             path = next((s.exe_path for s in group.sessions if s.exe_path), None)
-            if path:
-                with self._name_lock:
+            pids = {s.pid for s in group.sessions if s.pid}
+            with self._name_lock:
+                if path:
                     self._exe_paths[group.app_id] = path
+                if pids and group.app_id != SYSTEM_SOUNDS_ID:
+                    self._pids[group.app_id] = pids
         return apps
+
+    def app_alive(self, app_id: str) -> bool:
+        """True while a process of ``app_id`` is still running. Cheap (psutil only), never raises."""
+        try:
+            if app_id == SYSTEM_SOUNDS_ID:
+                return True  # system sounds never quit
+            import psutil
+
+            with self._name_lock:
+                pids = set(self._pids.get(app_id, ()))
+            for pid in pids:
+                try:
+                    if process_matches_app(psutil.Process(pid).name(), app_id):
+                        return True
+                except psutil.AccessDenied:
+                    if psutil.pid_exists(pid):
+                        return True
+                except psutil.Error:  # NoSuchProcess / ZombieProcess: gone
+                    continue
+            # All recorded PIDs are gone (or reused). The audio session may have belonged to a
+            # helper (e.g. a Chrome tab's audio process) while the main exe is still running.
+            for proc in psutil.process_iter(["name"]):
+                if process_matches_app(proc.info.get("name"), app_id):
+                    return True
+            return False
+        except Exception as e:  # noqa: BLE001
+            log.debug("app_alive(%r) failed: %r", app_id, e)
+            return False
 
     def icon_image(self, app_id: str):
         with self._name_lock:

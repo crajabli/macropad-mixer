@@ -349,6 +349,7 @@ class MacBackend:
     def __init__(self) -> None:
         self._last_output: dict[str, float] = {}  # app id -> monotonic time last seen playing
         self._app_paths: dict[str, str] = {}      # app id -> .app bundle path (for icons)
+        self._pids: dict[str, dict[int, str]] = {}  # app id -> {pid: executable path}, for app_alive
         self._sender = _UrlSender()
         self._finetune_ok = False
         self._finetune_checked = float("-inf")
@@ -372,6 +373,7 @@ class MacBackend:
         now = time.monotonic()
         me = os.getpid()
         present: dict[str, AppInfo] = {}
+        pids: dict[str, dict[int, str]] = {}
         for obj in _process_objects():
             pid = ctypes.c_int32()
             if not _get(obj, kAudioProcessPropertyPID, pid) or pid.value <= 0 or pid.value == me:
@@ -396,10 +398,27 @@ class MacBackend:
                 continue
             if playing:
                 self._last_output[bid] = now
+            owner = main_pid if resolved else pid.value
+            for p in {owner, pid.value}:
+                pids.setdefault(bid, {})[p] = _pid_path(p)
             if bid not in present or started < present[bid].started:
                 present[bid] = AppInfo(bid, name, started)
-        return [a for a in present.values() if now - self._last_output.get(a.id, float("-inf"))
-                <= RECENT_OUTPUT_WINDOW]
+        listed = [a for a in present.values() if now - self._last_output.get(a.id, float("-inf"))
+                  <= RECENT_OUTPUT_WINDOW]
+        for a in listed:
+            self._pids[a.id] = pids[a.id]
+        return listed
+
+    def app_alive(self, app_id: str) -> bool:
+        """True while any process we saw for this app is still running the same executable
+        (the path check guards against PID reuse)."""
+        for pid, path in self._pids.get(app_id, {}).items():
+            try:
+                if path and _pid_path(pid) == path:
+                    return True
+            except Exception:  # noqa: BLE001 - must never raise
+                log.debug("app_alive(%s) pid %d check failed", app_id, pid, exc_info=True)
+        return False
 
     def icon_image(self, app_id: str):
         path = self._app_paths.get(app_id)

@@ -169,3 +169,109 @@ def test_image_from_black_white_half_transparent():
     img = image_from_black_white(black, white, 1)
     r, g, b, a = img.getpixel((0, 0))
     assert 125 <= a <= 130 and b > 190 and r < 10 and g < 10
+
+
+def test_process_matches_app():
+    assert w.process_matches_app("Chrome.exe", "chrome.exe")
+    assert w.process_matches_app("CHROME.EXE", "chrome.exe")
+    assert not w.process_matches_app("notepad.exe", "chrome.exe")
+    assert not w.process_matches_app("", "chrome.exe")
+    assert not w.process_matches_app(None, "chrome.exe")
+    assert not w.process_matches_app("chrome.exe", "")
+
+
+def _fake_psutil(procs, denied=(), boom=False):
+    """Minimal psutil stand-in: procs maps pid -> exe name; pids in `denied` raise AccessDenied."""
+    import types
+
+    class Error(Exception):
+        pass
+
+    class NoSuchProcess(Error):
+        pass
+
+    class AccessDenied(Error):
+        pass
+
+    class Process:
+        def __init__(self, pid):
+            if boom:
+                raise RuntimeError("unexpected")
+            if pid not in procs:
+                raise NoSuchProcess(pid)
+            self.pid = pid
+
+        def name(self):
+            if self.pid in denied:
+                raise AccessDenied(self.pid)
+            return procs[self.pid]
+
+    class Iterated:
+        def __init__(self, name):
+            self.info = {"name": name}
+
+    fake = types.ModuleType("psutil")
+    fake.Error, fake.NoSuchProcess, fake.AccessDenied = Error, NoSuchProcess, AccessDenied
+    fake.Process = Process
+    fake.pid_exists = lambda pid: pid in procs
+    fake.process_iter_calls = 0
+
+    def process_iter(attrs=None):
+        fake.process_iter_calls += 1
+        return [Iterated(n) for n in procs.values()]
+
+    fake.process_iter = process_iter
+    return fake
+
+
+def test_app_alive(monkeypatch):
+    backend = w.WindowsBackend()
+    backend._pids = {"spotify.exe": {100}, "chrome.exe": {200, 201}}
+
+    # Recorded PID still running the same exe: alive, no process_iter fallback.
+    fake = _fake_psutil({100: "Spotify.exe"})
+    monkeypatch.setitem(sys.modules, "psutil", fake)
+    assert backend.app_alive("spotify.exe")
+    assert fake.process_iter_calls == 0
+
+    # PID reused by another exe and nothing else named spotify.exe: dead.
+    fake = _fake_psutil({100: "notepad.exe"})
+    monkeypatch.setitem(sys.modules, "psutil", fake)
+    assert not backend.app_alive("spotify.exe")
+
+    # AccessDenied on an existing PID counts as alive.
+    fake = _fake_psutil({100: "Spotify.exe"}, denied={100})
+    monkeypatch.setitem(sys.modules, "psutil", fake)
+    assert backend.app_alive("spotify.exe")
+
+    # Chrome's audio helper (200, 201) exited but the main chrome.exe (300) still runs.
+    fake = _fake_psutil({300: "chrome.exe", 400: "explorer.exe"})
+    monkeypatch.setitem(sys.modules, "psutil", fake)
+    assert backend.app_alive("chrome.exe")
+    assert fake.process_iter_calls == 1
+
+    # Fully quit.
+    fake = _fake_psutil({400: "explorer.exe"})
+    monkeypatch.setitem(sys.modules, "psutil", fake)
+    assert not backend.app_alive("chrome.exe")
+
+    # Unexpected errors are swallowed.
+    fake = _fake_psutil({100: "Spotify.exe"}, boom=True)
+    monkeypatch.setitem(sys.modules, "psutil", fake)
+    assert backend.app_alive("spotify.exe") is False
+
+
+def test_list_apps_records_pids_and_keeps_missing_apps():
+    backend = w.WindowsBackend()
+    backend._tls.com_ready = True
+    listing = [
+        w.group_sessions([rec("chrome.exe", 10), rec("chrome.exe", 11), rec("spotify.exe", 20)])
+    ]
+    backend._enumerate = lambda: listing[0]
+    backend._name_for = lambda g: g.app_id
+    backend.list_apps()
+    assert backend._pids == {"chrome.exe": {10, 11}, "spotify.exe": {20}}
+
+    listing[0] = w.group_sessions([rec("chrome.exe", 12)])
+    backend.list_apps()
+    assert backend._pids == {"chrome.exe": {12}, "spotify.exe": {20}}
