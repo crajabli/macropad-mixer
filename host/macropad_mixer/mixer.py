@@ -55,7 +55,8 @@ class Mixer:
         # Icons are optional: only backends with icon_image(app_id) -> PIL image provide them.
         loader = getattr(backend, "icon_image", None)
         self.icons = (IconCache(loader, getattr(backend, "icon_inset", 0.0),
-                                getattr(backend, "color_image", None)) if loader else None)
+                                getattr(backend, "color_image", None),
+                                getattr(backend, "icon_keep_outline", False)) if loader else None)
         self._icons_sent: set[str] = set()  # per connection; the device forgets on reboot
 
     # --- helpers -----------------------------------------------------------

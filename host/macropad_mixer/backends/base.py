@@ -22,7 +22,8 @@ class AudioBackend(Protocol):
     def set_mute(self, app_id: str, mute: bool) -> None: ...
     def close(self) -> None: ...
     # Optional (see icons.py): `icon_image(app_id) -> PIL.Image | None`, `icon_inset: float`, and
-    # `color_image(app_id) -> PIL.Image | None` when the brand colour needs a different image.
+    # `color_image(app_id) -> PIL.Image | None` when the brand colour needs a different image,
+    # `icon_keep_outline: bool` to keep the icon silhouette's edge in the OLED drawing.
 
 
 BACKENDS = ("auto", "macos", "windows", "linux", "fake")

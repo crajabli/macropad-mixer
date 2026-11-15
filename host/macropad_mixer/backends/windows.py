@@ -162,9 +162,104 @@ def summarize_group(
     )
 
 
+def image_from_black_white(black: bytes, white: bytes, size: int):
+    """Recover an RGBA image from the same icon drawn on black and on white (BGRA rows).
+
+    Where the icon is opaque both renders agree; where it is transparent they differ by the
+    background, so alpha = 255 - (white - black), and the colour is the black render
+    un-premultiplied. This sidesteps GDI's unreliable alpha channel.
+    """
+    from PIL import Image
+
+    out = bytearray(size * size * 4)
+    for i in range(0, size * size * 4, 4):
+        bb, bg, br = black[i], black[i + 1], black[i + 2]
+        diff = (white[i] - bb) + (white[i + 1] - bg) + (white[i + 2] - br)
+        a = max(0, min(255, 255 - round(diff / 3)))
+        if a:
+            out[i] = min(255, br * 255 // a)
+            out[i + 1] = min(255, bg * 255 // a)
+            out[i + 2] = min(255, bb * 255 // a)
+            out[i + 3] = a
+    return Image.frombytes("RGBA", (size, size), bytes(out))
+
+
 # --------------------------------------------------------------------------- #
 # Windows-only helpers (lazy imports)
 # --------------------------------------------------------------------------- #
+
+
+def _render_exe_icon(exe_path: str, size: int = 128):
+    """The exe's main icon as a PIL RGBA image via shell32/GDI (ctypes, no pywin32), or None."""
+    import ctypes
+    from ctypes import wintypes
+
+    shell32, user32, gdi32 = ctypes.WinDLL("shell32"), ctypes.WinDLL("user32"), ctypes.WinDLL("gdi32")
+    shell32.SHDefExtractIconW.argtypes = [wintypes.LPCWSTR, ctypes.c_int, wintypes.UINT,
+                                          ctypes.POINTER(wintypes.HICON), ctypes.POINTER(wintypes.HICON),
+                                          wintypes.UINT]
+    shell32.SHDefExtractIconW.restype = ctypes.c_long  # HRESULT
+    user32.DrawIconEx.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int, wintypes.HICON, ctypes.c_int,
+                                  ctypes.c_int, wintypes.UINT, wintypes.HBRUSH, wintypes.UINT]
+    user32.DrawIconEx.restype = wintypes.BOOL
+    user32.DestroyIcon.argtypes = [wintypes.HICON]
+    gdi32.CreateCompatibleDC.argtypes = [wintypes.HDC]
+    gdi32.CreateCompatibleDC.restype = wintypes.HDC
+
+    class BITMAPINFOHEADER(ctypes.Structure):
+        _fields_ = [("biSize", wintypes.DWORD), ("biWidth", wintypes.LONG), ("biHeight", wintypes.LONG),
+                    ("biPlanes", wintypes.WORD), ("biBitCount", wintypes.WORD),
+                    ("biCompression", wintypes.DWORD), ("biSizeImage", wintypes.DWORD),
+                    ("biXPelsPerMeter", wintypes.LONG), ("biYPelsPerMeter", wintypes.LONG),
+                    ("biClrUsed", wintypes.DWORD), ("biClrImportant", wintypes.DWORD)]
+
+    class BITMAPINFO(ctypes.Structure):
+        _fields_ = [("bmiHeader", BITMAPINFOHEADER), ("bmiColors", wintypes.DWORD * 3)]
+
+    gdi32.CreateDIBSection.argtypes = [wintypes.HDC, ctypes.POINTER(BITMAPINFO), wintypes.UINT,
+                                       ctypes.POINTER(ctypes.c_void_p), wintypes.HANDLE, wintypes.DWORD]
+    gdi32.CreateDIBSection.restype = wintypes.HBITMAP
+    gdi32.SelectObject.argtypes = [wintypes.HDC, wintypes.HGDIOBJ]
+    gdi32.SelectObject.restype = wintypes.HGDIOBJ
+    gdi32.DeleteObject.argtypes = [wintypes.HGDIOBJ]
+    gdi32.DeleteDC.argtypes = [wintypes.HDC]
+
+    hicon = wintypes.HICON()
+    # nIconSize: LOWORD = large icon size, HIWORD = small icon size (unused).
+    if shell32.SHDefExtractIconW(exe_path, 0, 0, ctypes.byref(hicon), None, size) != 0 or not hicon:
+        return None
+
+    def render(fill: int) -> bytes | None:
+        hdc = gdi32.CreateCompatibleDC(None)
+        bmi = BITMAPINFO()
+        hdr = bmi.bmiHeader
+        hdr.biSize = ctypes.sizeof(BITMAPINFOHEADER)
+        hdr.biWidth, hdr.biHeight = size, -size  # negative height: top-down rows
+        hdr.biPlanes, hdr.biBitCount, hdr.biCompression = 1, 32, 0  # BI_RGB
+        bits = ctypes.c_void_p()
+        hbm = gdi32.CreateDIBSection(hdc, ctypes.byref(bmi), 0, ctypes.byref(bits), None, 0)
+        if not hbm or not bits:
+            gdi32.DeleteDC(hdc)
+            return None
+        old = gdi32.SelectObject(hdc, hbm)
+        try:
+            ctypes.memset(bits, fill, size * size * 4)
+            if not user32.DrawIconEx(hdc, 0, 0, hicon, size, size, 0, None, 3):  # DI_NORMAL
+                return None
+            gdi32.GdiFlush()
+            return ctypes.string_at(bits, size * size * 4)
+        finally:
+            gdi32.SelectObject(hdc, old)
+            gdi32.DeleteObject(hbm)
+            gdi32.DeleteDC(hdc)
+
+    try:
+        black, white = render(0x00), render(0xFF)
+    finally:
+        user32.DestroyIcon(hicon)
+    if black is None or white is None:
+        return None
+    return image_from_black_white(black, white, size)
 
 
 def _file_description(exe_path: str) -> str | None:
@@ -205,9 +300,15 @@ def _file_description(exe_path: str) -> str | None:
 class WindowsBackend:
     """AudioBackend implementation for Windows (WASAPI sessions via pycaw)."""
 
+    icon_inset = 0.0          # Windows icons have no plate around them...
+    icon_keep_outline = True  # ...so the silhouette's edge is part of the logo
+
     def __init__(self, include_system_sounds: bool = False) -> None:
         self.include_system_sounds = include_system_sounds
         self._tls = threading.local()
+        # app id -> exe path, shared across threads (icons load on a worker thread, while the
+        # session cache in self._tls is per thread).
+        self._exe_paths: dict[str, str] = {}
         self._name_cache: dict[str, str] = {}  # exe path (or exe name) -> friendly name
         self._name_lock = threading.Lock()
 
@@ -404,7 +505,17 @@ class WindowsBackend:
                 apps.append(summarize_group(group, self._name_for))
             except Exception:
                 log.warning("skipping app %s", group.app_id, exc_info=True)
+                continue
+            path = next((s.exe_path for s in group.sessions if s.exe_path), None)
+            if path:
+                with self._name_lock:
+                    self._exe_paths[group.app_id] = path
         return apps
+
+    def icon_image(self, app_id: str):
+        with self._name_lock:
+            path = self._exe_paths.get(app_id)
+        return _render_exe_icon(path) if path else None
 
     def _apply(self, app_id: str, op: Callable[[Any], None], what: str) -> None:
         self._ensure_com()

@@ -21,11 +21,14 @@ ICON_SIZE = 32
 _WORK = 64  # edge detection runs at 2x, then downsamples
 
 
-def to_bits(img: Image.Image, inset: float = 0.0, size: int = ICON_SIZE) -> bytes:
+def to_bits(img: Image.Image, inset: float = 0.0, size: int = ICON_SIZE,
+            keep_outline: bool = False) -> bytes:
     """Convert an RGBA icon to packed 1-bit rows (MSB first, rows padded to whole bytes).
 
     `inset` crops that fraction off each side of the opaque area first, e.g. to drop the
-    rounded-square plate that macOS draws around every icon.
+    rounded-square plate that macOS draws around every icon. `keep_outline` keeps the edge of
+    the icon's silhouette (Windows icons have no plate, so the silhouette is the logo's shape);
+    otherwise only the drawing inside the silhouette is kept.
     """
     img = img.convert("RGBA")
     bbox = img.getchannel("A").getbbox()
@@ -40,7 +43,7 @@ def to_bits(img: Image.Image, inset: float = 0.0, size: int = ICON_SIZE) -> byte
     edges = ImageOps.autocontrast(flat.convert("L")).filter(ImageFilter.FIND_EDGES)
     # Ignore the outline of the icon's own silhouette; keep the drawing inside it.
     inner = img.getchannel("A").point(lambda a: 255 if a > 128 else 0)
-    if inner.getextrema() != (255, 255):  # only erode when there is a real silhouette
+    if not keep_outline and inner.getextrema() != (255, 255):  # only with a real silhouette
         edges = ImageChops.multiply(edges, inner.filter(ImageFilter.MinFilter(9)))
     small = edges.resize((size, size), Image.LANCZOS).point(lambda v: 255 if v > 40 else 0)
 
@@ -112,8 +115,10 @@ class IconCache:
         loader: Callable[[str], Image.Image | None],
         inset: float = 0.0,
         color_loader: Callable[[str], Image.Image | None] | None = None,
+        keep_outline: bool = False,
     ) -> None:
         self._loader = loader
+        self._keep_outline = keep_outline
         self._color_loader = color_loader
         self._inset = inset
         self._bits: dict[str, Entry] = {}
@@ -141,7 +146,7 @@ class IconCache:
         try:
             img = self._loader(app_id)
             if img is not None:
-                bits = to_bits(img, self._inset)
+                bits = to_bits(img, self._inset, keep_outline=self._keep_outline)
         except Exception:
             log.debug("icon for %s failed", app_id, exc_info=True)
         try:

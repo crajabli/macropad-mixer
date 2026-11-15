@@ -5,7 +5,8 @@ Volume Mixer on your desk, for macOS and Windows (Linux as a bonus).
 
 - Each of the 12 keys is automatically assigned an app that is currently playing audio,
   most recently started first. With more than 12 apps the last key flips pages.
-- Press a key: the app's name and volume appear on the OLED and the key lights up.
+- Keys light up in each app's brand colour (taken from its icon).
+- Press a key: the app's logo, name and volume appear on the OLED and the key lights up.
 - Turn the knob: that app's volume changes in 5 % steps. Only that app, not the system volume.
 - Press the knob: mute or unmute that app.
 
@@ -50,8 +51,25 @@ Requires Python 3.10+.
 pip install -e "host"            # macOS
 pip install -e "host[windows]"   # Windows
 pip install -e "host[linux]"     # Linux
-macropad-mixer -v
+macropad-mixer -v                # try it in the terminal first (Ctrl-C to stop)
 ```
+
+### 3. Start it automatically at login
+
+```sh
+macropad-mixer autostart install     # also starts it right away
+macropad-mixer autostart status
+macropad-mixer autostart uninstall
+```
+
+- macOS: a LaunchAgent that also restarts the daemon if it crashes.
+  Log: `~/Library/Logs/macropad-mixer.log`.
+- Windows: a "MacroPad Mixer" shortcut in your Startup folder (runs without a console window).
+  Log: `%LOCALAPPDATA%\macropad-mixer\macropad-mixer.log`.
+- Linux: an entry in `~/.config/autostart`.
+
+Options after `install` are passed to the daemon, e.g. `macropad-mixer autostart install --step 2`.
+Stop the autostarted daemon before running one in a terminal: only one program can use the serial port.
 
 **macOS** has no built-in per-app volume API, so the daemon drives
 [FineTune](https://github.com/ronitsingh10/FineTune) (free, open source, macOS 15+):

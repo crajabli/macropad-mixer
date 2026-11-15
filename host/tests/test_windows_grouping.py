@@ -147,3 +147,25 @@ def test_handles_and_apply_to_every_session():
     backend.set_mute("chrome.exe", True)
     assert a.mute == b.mute == 1
     backend.set_volume("nope.exe", 10)  # unknown id: logged, no exception
+
+
+def test_image_from_black_white_recovers_alpha_and_colour():
+    from macropad_mixer.backends.windows import image_from_black_white
+
+    # 2x1 px, BGRA rows: pixel 0 opaque red, pixel 1 fully transparent.
+    black = bytes([0, 0, 200, 0, 0, 0, 0, 0])
+    white = bytes([0, 0, 200, 0, 255, 255, 255, 0])
+    img = image_from_black_white(black + bytes(8), white + bytes(8), 2)  # pad to 2x2
+    assert img.getpixel((0, 0)) == (200, 0, 0, 255)
+    assert img.getpixel((1, 0))[3] == 0
+
+
+def test_image_from_black_white_half_transparent():
+    from macropad_mixer.backends.windows import image_from_black_white
+
+    # 50% blue over black = (0,0,100); over white = (127,127,227) in BGR terms.
+    black = bytes([100, 0, 0, 0])
+    white = bytes([227, 127, 127, 0])
+    img = image_from_black_white(black, white, 1)
+    r, g, b, a = img.getpixel((0, 0))
+    assert 125 <= a <= 130 and b > 190 and r < 10 and g < 10
