@@ -8,7 +8,9 @@ DRIVE="${1:-/Volumes/CIRCUITPY}"
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 
 if [[ ! -f "$DRIVE/boot_out.txt" ]]; then
-  echo "CIRCUITPY drive not found at $DRIVE" >&2
+  echo "CIRCUITPY drive not found at $DRIVE." >&2
+  echo "The drive is hidden in normal use: hold KEY 1 (top-left, under the screen) while" >&2
+  echo "plugging in the MacroPad or pressing RESET to show it." >&2
   exit 1
 fi
 
@@ -43,5 +45,5 @@ sync
 
 echo "Firmware copied to $DRIVE."
 if [[ $boot_changed == 1 ]]; then
-  echo "boot.py changed: press the MacroPad's RESET button (or unplug/replug) to enable the data port."
+  echo "boot.py changed: eject CIRCUITPY, then press the MacroPad's RESET button for it to take effect."
 fi

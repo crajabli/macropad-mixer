@@ -33,7 +33,9 @@ MacroPad (CircuitPython)  <-- USB data serial, JSON lines -->  host daemon (Pyth
 
 ## Install (no commands needed)
 
-The MacroPad carries its own installer. Plug it in, open the **CIRCUITPY** drive and double-click:
+The MacroPad carries its own installer. Its **CIRCUITPY** drive is hidden in normal use (so it
+can be unplugged any time without ejecting), so **hold key 1, the top-left key right under the
+screen, while plugging it in** to show the drive. Then open **CIRCUITPY** and double-click:
 
 - **Mac:** `Install MacroPad Mixer (Mac).command`
 - **Windows:** `Install MacroPad Mixer (Windows).cmd`
@@ -62,7 +64,9 @@ removed for security), so this one double-click per computer is the minimum.
 
    On Windows without bash, copy `firmware/boot.py` and `firmware/code.py` to the
    `CIRCUITPY` drive and run `circup install adafruit_macropad adafruit_display_text`.
-3. Press the MacroPad's **RESET** button once so `boot.py` enables the data port.
+3. Press the MacroPad's **RESET** button once so `boot.py` takes effect: it enables the data
+   port and hides the CIRCUITPY drive. From then on, hold **key 1** while plugging in (or
+   pressing RESET) whenever you need the drive, e.g. to deploy or edit the firmware.
    `tools/deploy_firmware.sh` also copies the installers and the daemon onto the drive.
    The OLED shows "Waiting for host...".
 

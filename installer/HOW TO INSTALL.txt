@@ -1,6 +1,10 @@
 MacroPad Mixer - per-app volume control
 =======================================
 
+You're reading this because the MacroPad's drive is showing. In normal use the drive is
+hidden, so you can unplug the MacroPad any time without ejecting. To show the drive again,
+hold KEY 1 (the top-left key, right under the screen) while plugging the MacroPad in.
+
 Install once on each computer you use the MacroPad with:
 
   Mac:      double-click "Install MacroPad Mixer (Mac).command"
@@ -10,7 +14,8 @@ Install once on each computer you use the MacroPad with:
 
 The installer downloads what it needs (Python, and FineTune on Mac), so the computer
 must be online. Afterwards the mixer starts by itself at every login, and the MacroPad
-works as soon as it is plugged in. Nothing else to run.
+works as soon as it is plugged in. Nothing else to run. Unplug and replug it any time
+(eject CIRCUITPY first only while this drive is showing).
 
 Using it:
   - Keys light up in the colour of an app that is playing sound.
