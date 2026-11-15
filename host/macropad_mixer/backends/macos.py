@@ -285,6 +285,18 @@ def finetune_installed() -> bool:
     return False
 
 
+FINETUNE_CHECK_INTERVAL = 30.0  # seconds between "is FineTune running?" checks
+
+
+def finetune_running() -> bool:
+    return subprocess.run(["pgrep", "-xq", "FineTune"], timeout=5).returncode == 0
+
+
+def launch_finetune() -> None:
+    """Start FineTune in the background (no window), so it needs no login item of its own."""
+    subprocess.run(["open", "-g", "-b", FINETUNE_BUNDLE_ID], capture_output=True, timeout=10)
+
+
 def volume_url(app_id: str, vol: int) -> str:
     return "finetune://set-volumes?" + urlencode({"app": app_id, "volume": int(vol)}, quote_via=quote)
 
@@ -354,7 +366,9 @@ class MacBackend:
         self._finetune_ok = False
         self._finetune_checked = float("-inf")
         self._warned = False
+        self._finetune_running_checked = float("-inf")
         self._check_finetune()
+        self._ensure_finetune_running()
 
     def _check_finetune(self) -> bool:
         now = time.monotonic()
@@ -369,7 +383,21 @@ class MacBackend:
                 log.info("FineTune found")
         return self._finetune_ok
 
+    def _ensure_finetune_running(self) -> None:
+        """Our daemon starts at login; start FineTune with it (and again if it was quit)."""
+        now = time.monotonic()
+        if now - self._finetune_running_checked < FINETUNE_CHECK_INTERVAL or not self._finetune_ok:
+            return
+        self._finetune_running_checked = now
+        try:
+            if not finetune_running():
+                log.info("starting FineTune")
+                launch_finetune()
+        except (OSError, subprocess.SubprocessError) as e:
+            log.warning("could not start FineTune: %s", e)
+
     def list_apps(self) -> list[AppInfo]:
+        self._ensure_finetune_running()
         now = time.monotonic()
         me = os.getpid()
         present: dict[str, AppInfo] = {}

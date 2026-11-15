@@ -29,7 +29,23 @@ MacroPad (CircuitPython)  <-- USB data serial, JSON lines -->  host daemon (Pyth
   MacroPad, and applies volume changes. The device ↔ host protocol is in
   [`docs/protocol.md`](docs/protocol.md).
 
-## Setup
+## Install (no commands needed)
+
+The MacroPad carries its own installer. Plug it in, open the **CIRCUITPY** drive and double-click:
+
+- **Mac:** `Install MacroPad Mixer (Mac).command`
+- **Windows:** `Install MacroPad Mixer (Windows).cmd`
+
+The installer (online, a minute or two) sets up a private Python and the mixer daemon, installs
+[FineTune](https://github.com/ronitsingh10/FineTune) on Mac, and makes the daemon start at every
+login. From then on the MacroPad just works whenever it's plugged in; on Mac the daemon also
+starts FineTune when needed. The only click left is FineTune's one-time "allow system audio"
+prompt on Mac.
+
+No operating system runs software automatically when a USB device is plugged in (AutoRun was
+removed for security), so this one double-click per computer is the minimum.
+
+## Setup (developers / building a MacroPad)
 
 ### 1. MacroPad firmware
 
@@ -45,6 +61,7 @@ MacroPad (CircuitPython)  <-- USB data serial, JSON lines -->  host daemon (Pyth
    On Windows without bash, copy `firmware/boot.py` and `firmware/code.py` to the
    `CIRCUITPY` drive and run `circup install adafruit_macropad adafruit_display_text`.
 3. Press the MacroPad's **RESET** button once so `boot.py` enables the data port.
+   `tools/deploy_firmware.sh` also copies the installers and the daemon onto the drive.
    The OLED shows "Waiting for host...".
 
 ### 2. Host daemon

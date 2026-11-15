@@ -82,3 +82,21 @@ def test_app_alive_follows_the_process():
         proc.kill()
         proc.wait()
     assert not backend.app_alive("x")
+
+
+def test_finetune_is_started_when_not_running(monkeypatch):
+    from macropad_mixer.backends import macos
+
+    launched = []
+    monkeypatch.setattr(macos, "finetune_running", lambda: False)
+    monkeypatch.setattr(macos, "launch_finetune", lambda: launched.append(1))
+    backend = macos.MacBackend.__new__(macos.MacBackend)
+    backend._finetune_ok = True
+    backend._finetune_running_checked = float("-inf")
+    backend._ensure_finetune_running()
+    backend._ensure_finetune_running()  # throttled: no second launch within 30 s
+    assert launched == [1]
+    backend._finetune_ok = False        # not installed: never try
+    backend._finetune_running_checked = float("-inf")
+    backend._ensure_finetune_running()
+    assert launched == [1]
