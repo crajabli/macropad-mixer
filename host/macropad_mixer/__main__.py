@@ -21,17 +21,21 @@ def main(argv: list[str] | None = None) -> None:
         level=logging.DEBUG if args.verbose else logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    logging.getLogger("PIL").setLevel(logging.INFO)  # its PNG chunk debug output is noise
 
     from .link import SerialLink
     from .mixer import Mixer
 
     backend = load_backend(args.backend)
     link = SerialLink(args.port)
+    mixer = Mixer(backend, link, step=args.step, poll=args.poll)
     try:
-        Mixer(backend, link, step=args.step, poll=args.poll).run()
+        mixer.run()
     except KeyboardInterrupt:
         pass
     finally:
+        if mixer.icons:
+            mixer.icons.close()
         link.close()
         backend.close()
 

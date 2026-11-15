@@ -29,6 +29,7 @@
 |-----|--------|---------|
 | `apps` | `apps`: list of `{id, name, vol, mute}` (max 33) | Full replacement of the app list. Sent on connect (after `hello`), whenever the set or order of apps changes, and at least every 30 s. |
 | `vol` | `id`, `vol`, `mute` | Current state of one app (reply to `delta`/`mute`, or external change). |
+| `icon` | `id`, optional `w`, `h`, `b`, optional `c` | `c`: the app's brand colour for its key LED as an integer 0xRRGGBB. `w`/`h`/`b`: app icon as 1-bit pixels: `b` is base64 of packed rows (MSB = leftmost pixel, each row padded to whole bytes, 1 = lit). Currently 32×32 = 128 bytes. Sent once per app per connection (again after every `hello`), after the `apps` message that lists the app. Max side 32 px. Optional: apps without an icon get none. |
 | `ping` | — | Heartbeat, every 2 s. |
 
 `name` is a human label, max 20 chars (host truncates). `vol` may be `null` if unknown.
@@ -82,6 +83,9 @@ class AudioBackend(Protocol):
     def set_volume(self, app_id: str, vol: int) -> None: ...   # 0-100
     def set_mute(self, app_id: str, mute: bool) -> None: ...
     def close(self) -> None: ...
+    # optional:
+    icon_inset: float                               # fraction to crop off each side first
+    def icon_image(self, app_id: str) -> "PIL.Image.Image | None": ...
 ```
 
 If a backend cannot read volume/mute (macOS + FineTune), it returns `None` and the daemon

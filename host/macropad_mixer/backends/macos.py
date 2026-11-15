@@ -9,6 +9,9 @@ Control: FineTune's URL scheme (guide/url-schemes.md in github.com/ronitsingh10/
     finetune://set-volumes?app=<bundle id>&volume=<0-100>
     finetune://set-mute?app=<bundle id>&muted=true|false
 FineTune can't report volumes back, so list_apps() returns vol/mute None and the daemon keeps its own record.
+
+Icons: AppKit's NSWorkspace.iconForFile, rendered to PNG through a small JavaScript-for-Automation
+script (osascript), so no pyobjc dependency is needed.
 """
 
 from __future__ import annotations
@@ -39,6 +42,63 @@ SYSTEM_PREFIXES = (
     "com.apple.UserNotifications", "com.apple.speech", "com.apple.dictation", "com.apple.corespeech",
     "com.apple.CoreSpeech", "com.apple.controlcenter",
 )
+
+ICON_INSET = 0.07  # macOS draws every icon on a rounded-square plate; crop inside it
+ICON_CACHE = os.path.expanduser("~/Library/Caches/macropad-mixer/icons")
+
+# Renders an app's Finder icon at 128x128 into a PNG: osascript -l JavaScript <file> <app path> <png path>
+_ICON_JXA = """ObjC.import('AppKit');
+function run(argv) {
+  var img = $.NSWorkspace.sharedWorkspace.iconForFile(argv[0]);
+  var rep = $.NSBitmapImageRep.alloc.initWithBitmapDataPlanesPixelsWidePixelsHighBitsPerSampleSamplesPerPixelHasAlphaIsPlanarColorSpaceNameBytesPerRowBitsPerPixel(null, 128, 128, 8, 4, true, false, $.NSCalibratedRGBColorSpace, 0, 0);
+  $.NSGraphicsContext.saveGraphicsState;
+  $.NSGraphicsContext.setCurrentContext($.NSGraphicsContext.graphicsContextWithBitmapImageRep(rep));
+  img.drawInRectFromRectOperationFraction($.NSMakeRect(0, 0, 128, 128), $.NSZeroRect, $.NSCompositingOperationCopy, 1.0);
+  $.NSGraphicsContext.restoreGraphicsState;
+  rep.representationUsingTypeProperties($.NSBitmapImageFileTypePNG, $()).writeToFileAtomically(argv[1], true);
+}
+"""
+
+
+def render_icon(app_path: str, app_id: str):
+    """Return the app's icon as a PIL RGBA image (cached on disk), or None."""
+    from PIL import Image
+
+    os.makedirs(ICON_CACHE, exist_ok=True)
+    png = os.path.join(ICON_CACHE, quote(app_id, safe="") + ".png")
+    if not os.path.exists(png) or os.path.getmtime(png) < os.path.getmtime(app_path):
+        script = os.path.join(ICON_CACHE, "icon.js")
+        if not os.path.exists(script):
+            with open(script, "w") as f:
+                f.write(_ICON_JXA)
+        subprocess.run(["osascript", "-l", "JavaScript", script, app_path, png],
+                       check=True, capture_output=True, timeout=10)
+    img = Image.open(png)
+    img.load()
+    return img
+
+
+def bundle_icns(app_path: str):
+    """The app's own .icns as a PIL image: full colour, unlike the rendered icon, which follows
+    the user's tinted/clear icon style. None if the app only ships an asset catalog."""
+    from PIL import Image
+
+    try:
+        with open(os.path.join(app_path, "Contents", "Info.plist"), "rb") as f:
+            name = plistlib.load(f).get("CFBundleIconFile") or ""
+    except (OSError, plistlib.InvalidFileException):
+        return None
+    if not name:
+        return None
+    path = os.path.join(app_path, "Contents", "Resources", name)
+    if not path.endswith(".icns"):
+        path += ".icns"
+    if not os.path.exists(path):
+        return None
+    img = Image.open(path)
+    img.load()
+    return img
+
 
 # --- Core Audio / libproc via ctypes ---------------------------------------------------------------
 
@@ -284,8 +344,11 @@ class _UrlSender:
 
 
 class MacBackend:
+    icon_inset = ICON_INSET
+
     def __init__(self) -> None:
         self._last_output: dict[str, float] = {}  # app id -> monotonic time last seen playing
+        self._app_paths: dict[str, str] = {}      # app id -> .app bundle path (for icons)
         self._sender = _UrlSender()
         self._finetune_ok = False
         self._finetune_checked = float("-inf")
@@ -321,6 +384,8 @@ class MacBackend:
                 bid, name = _bundle_info(app_path)
                 bid = bid or _process_bundle_id(obj)
                 started = _start_time(main_pid)
+                if bid:
+                    self._app_paths[bid] = app_path
             else:
                 # no .app: only keep processes with a real (non-Apple) bundle id; drops system daemons
                 bid = _process_bundle_id(obj)
@@ -335,6 +400,14 @@ class MacBackend:
                 present[bid] = AppInfo(bid, name, started)
         return [a for a in present.values() if now - self._last_output.get(a.id, float("-inf"))
                 <= RECENT_OUTPUT_WINDOW]
+
+    def icon_image(self, app_id: str):
+        path = self._app_paths.get(app_id)
+        return render_icon(path, app_id) if path else None
+
+    def color_image(self, app_id: str):
+        path = self._app_paths.get(app_id)
+        return bundle_icns(path) if path else None
 
     def set_volume(self, app_id: str, vol: int) -> None:
         if self._check_finetune():

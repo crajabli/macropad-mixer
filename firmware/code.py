@@ -3,6 +3,7 @@
 # Keys pick an app sent by the host daemon, the knob changes that app's volume,
 # pressing the knob toggles mute. Protocol: docs/protocol.md (JSON lines over
 # the USB CDC data port enabled in boot.py).
+import binascii
 import json
 import time
 
@@ -13,13 +14,16 @@ from adafruit_display_text import label
 from adafruit_macropad import MacroPad
 from rainbowio import colorwheel
 
-FW_VERSION = "0.1.0"
+FW_VERSION = "0.3.0"
 NUM_KEYS = 12
 HOST_TIMEOUT = 6.0  # seconds without any message -> host considered gone
 MAX_LINE = 4096
 DELTA_INTERVAL = 0.05  # batch knob clicks, send at most every 50 ms
 DIM = 0.12  # brightness factor for unselected keys
 NEXT_PAGE_COLOR = 0x202020
+ICON_MAX = 32  # largest icon side we accept (px)
+NAME_X = 36  # text column to the right of an icon
+NAME_CHARS = (128 - NAME_X) // 6  # terminalio glyphs are 6 px wide
 
 macropad = MacroPad()
 macropad.pixels.auto_write = False
@@ -32,6 +36,7 @@ display = macropad.display
 WIDTH = display.width
 
 screen = displayio.Group()
+icon_slot = displayio.Group(x=0, y=0)  # holds the selected app's icon TileGrid, if any
 title = label.Label(terminalio.FONT, text="", scale=2, x=2, y=10)
 subtitle = label.Label(terminalio.FONT, text="", x=2, y=32)
 status = label.Label(terminalio.FONT, text="", x=2, y=56)
@@ -44,7 +49,7 @@ bar_palette[1] = 0xFFFFFF
 bar = displayio.TileGrid(bar_bitmap, pixel_shader=bar_palette, x=2, y=BAR_Y)
 bar.hidden = True
 
-for item in (title, subtitle, bar, status):
+for item in (icon_slot, title, subtitle, bar, status):
     screen.append(item)
 display.root_group = screen
 
@@ -58,17 +63,43 @@ def draw_bar(vol):
             bar_bitmap[x, y] = 1 if edge or (1 <= x <= fill) else 0
 
 
-def set_title(text):
-    # Scale 2 fits 10 characters on the 128 px display; longer names use scale 1.
+def set_title(text, icon=None):
+    """Show the app name; with an icon, the icon goes left and the name is small beside it."""
+    while len(icon_slot):
+        icon_slot.pop()
+    if icon is not None:
+        icon_slot.append(displayio.TileGrid(icon, pixel_shader=bar_palette))
+        title.scale, title.x, title.y = 1, NAME_X, 8
+        title.text = text if len(text) <= NAME_CHARS else text[: NAME_CHARS - 1] + "."
+        subtitle.x, subtitle.y = NAME_X, 24
+        return
+    # No icon: scale 2 fits 10 characters on the 128 px display; longer names use scale 1.
     title.scale = 2 if len(text) <= 10 else 1
-    title.y = 10 if title.scale == 2 else 6
+    title.x, title.y = 2, (10 if title.scale == 2 else 6)
     title.text = text
+    subtitle.x, subtitle.y = 2, 32
+
+
+def decode_icon(w, h, data):
+    """Packed 1-bit rows (MSB first, rows padded to bytes) -> displayio.Bitmap."""
+    row = (w + 7) // 8
+    if not (0 < w <= ICON_MAX and 0 < h <= ICON_MAX) or len(data) < row * h:
+        return None
+    bmp = displayio.Bitmap(w, h, 2)
+    for y in range(h):
+        base = y * row
+        for x in range(w):
+            if data[base + x // 8] & (0x80 >> (x % 8)):
+                bmp[x, y] = 1
+    return bmp
 
 
 # ------------------------------------------------------------------ state ---
 
 apps = []  # [{"id", "name"}] most recent first, as sent by the host
 state = {}  # id -> {"vol": int|None, "mute": bool}
+icons = {}  # id -> displayio.Bitmap
+colors = {}  # id -> 0xRRGGBB brand colour from the host
 selected = None  # app id
 page = 0
 connected = False
@@ -100,6 +131,8 @@ def app_for_key(key):
 
 
 def app_color(app_id):
+    if app_id in colors:
+        return colors[app_id]
     h = 0
     for ch in app_id:
         h = (h * 31 + ord(ch)) & 0xFFFF
@@ -171,8 +204,25 @@ def handle(msg):
                 state[str(a["id"])] = {"vol": a.get("vol"), "mute": bool(a.get("mute"))}
         if selected is not None and find_app(selected) is None:
             selected = None
+        for cache in (icons, colors):  # forget icons/colours of apps that went away
+            for app_id in list(cache):
+                if find_app(app_id) is None:
+                    del cache[app_id]
         page = min(page, page_count() - 1)
         dirty = True
+    elif kind == "icon":
+        app_id = str(msg.get("id"))
+        if "b" in msg:
+            try:
+                bmp = decode_icon(int(msg["w"]), int(msg["h"]), binascii.a2b_base64(msg["b"]))
+            except (KeyError, ValueError, TypeError) as err:
+                print("bad icon:", err)
+                bmp = None
+            if bmp is not None:
+                icons[app_id] = bmp
+        if isinstance(msg.get("c"), int):
+            colors[app_id] = msg["c"] & 0xFFFFFF
+        dirty = True  # key colours may have changed
     elif kind == "vol":
         app_id = msg.get("id")
         if app_id is not None:
@@ -244,7 +294,7 @@ def render():
         subtitle.text = "Press a lit key" if apps else "Play something..."
         bar.hidden = True
         return
-    set_title(app["name"])
+    set_title(app["name"], icons.get(app["id"]))
     st = state.get(app["id"], {})
     vol = st.get("vol")
     if st.get("mute"):

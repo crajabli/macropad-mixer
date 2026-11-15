@@ -9,6 +9,7 @@ from typing import Callable, Protocol
 
 from . import protocol
 from .backends.base import AppInfo, AudioBackend
+from .icons import IconCache, icon_msg
 
 log = logging.getLogger(__name__)
 
@@ -51,6 +52,11 @@ class Mixer:
         self._last_ping = float("-inf")
         self._last_apps_sent = float("-inf")
         self._generation = getattr(link, "generation", 0)
+        # Icons are optional: only backends with icon_image(app_id) -> PIL image provide them.
+        loader = getattr(backend, "icon_image", None)
+        self.icons = (IconCache(loader, getattr(backend, "icon_inset", 0.0),
+                                getattr(backend, "color_image", None)) if loader else None)
+        self._icons_sent: set[str] = set()  # per connection; the device forgets on reboot
 
     # --- helpers -----------------------------------------------------------
 
@@ -105,6 +111,7 @@ class Mixer:
         t = msg["t"]
         if t == "hello":
             log.info("device hello (fw %s)", msg.get("fw"))
+            self._icons_sent.clear()
             self.send_apps()
         elif t == "ping":  # not sent by v1 firmware, but answer it anyway
             self._send({"t": "pong"})
@@ -120,6 +127,20 @@ class Mixer:
             self._send_vol(msg["id"])
         elif t == "sel":
             log.debug("selected %s", msg["id"])
+
+    def send_icons(self) -> None:
+        """Send icons that finished loading for listed apps the device hasn't received yet."""
+        if self.icons is None:
+            return
+        for a in self.apps:
+            if a.id in self._icons_sent:
+                continue
+            entry = self.icons.get(a.id)
+            if entry is not None:
+                self._icons_sent.add(a.id)
+                bits, color = entry
+                if bits or color is not None:
+                    self._send(icon_msg(a.id, bits, color))
 
     def _apply(self, fn: Callable[[], None]) -> None:
         try:
@@ -138,12 +159,14 @@ class Mixer:
         if gen != self._generation:  # reconnected: ping right away to elicit hello
             self._generation = gen
             self._last_ping = float("-inf")
+            self._icons_sent.clear()
         now = self.clock()
         if now - self._last_poll >= self.poll:
             self._last_poll = now
             self.refresh_apps()
         if now - self._last_apps_sent >= APPS_REFRESH:
             self.send_apps()
+        self.send_icons()
         if now - self._last_ping >= PING_INTERVAL:
             self._last_ping = now
             self._send({"t": "ping"})

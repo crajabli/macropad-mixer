@@ -21,6 +21,8 @@ class AudioBackend(Protocol):
     def set_volume(self, app_id: str, vol: int) -> None: ...   # 0-100
     def set_mute(self, app_id: str, mute: bool) -> None: ...
     def close(self) -> None: ...
+    # Optional (see icons.py): `icon_image(app_id) -> PIL.Image | None`, `icon_inset: float`, and
+    # `color_image(app_id) -> PIL.Image | None` when the brand colour needs a different image.
 
 
 BACKENDS = ("auto", "macos", "windows", "linux", "fake")

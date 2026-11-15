@@ -7,7 +7,7 @@ name = "macropad-mixer"
 version = "0.1.0"
 description = "Host daemon for an Adafruit MacroPad per-app volume mixer"
 requires-python = ">=3.10"
-dependencies = ["pyserial", "adafruit-board-toolkit"]
+dependencies = ["pyserial", "adafruit-board-toolkit", "pillow"]
 
 [project.optional-dependencies]
 windows = ["pycaw", "comtypes", "psutil", "pywin32"]
