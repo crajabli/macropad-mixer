@@ -72,7 +72,10 @@ def main(argv: list[str] | None = None) -> None:
     backend = load_backend(args.backend)
     link = SerialLink(args.port)
     displays = load_display_backend()
+    from .icons import default_store_dir
+
     mixer = Mixer(backend, link, step=args.step, poll=args.poll, pins=Pins(default_path()),
+                  icon_store=default_store_dir(),
                   displays=displays, bright_step=args.bright_step)
     logging.getLogger(__name__).info("macropad-mixer started (backend %s)", type(backend).__name__)
     try:

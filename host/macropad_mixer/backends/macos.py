@@ -78,6 +78,20 @@ def render_icon(app_path: str, app_id: str):
     return img
 
 
+def find_app_by_bundle_id(bundle_id: str) -> str | None:
+    """Locate an installed app by bundle id (Spotlight), preferring /Applications."""
+    if "." not in bundle_id or "'" in bundle_id:
+        return None
+    try:
+        out = subprocess.run(["mdfind", f"kMDItemCFBundleIdentifier == '{bundle_id}'"],
+                             capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    paths = [p for p in out.splitlines() if p.endswith(".app") and os.path.isdir(p)]
+    paths.sort(key=lambda p: (not p.startswith("/Applications/"), len(p)))
+    return paths[0] if paths else None
+
+
 def bundle_icns(app_path: str):
     """The app's own .icns as a PIL image: full colour, unlike the rendered icon, which follows
     the user's tinted/clear icon style. None if the app only ships an asset catalog."""
@@ -448,12 +462,22 @@ class MacBackend:
                 log.debug("app_alive(%s) pid %d check failed", app_id, pid, exc_info=True)
         return False
 
-    def icon_image(self, app_id: str):
+    def _path_for(self, app_id: str) -> str | None:
+        """The app's .app path: from the audio listing, or (pinned apps that haven't played
+        since we started) looked up by bundle id via Spotlight."""
         path = self._app_paths.get(app_id)
+        if path is None:
+            path = find_app_by_bundle_id(app_id)
+            if path:
+                self._app_paths[app_id] = path
+        return path
+
+    def icon_image(self, app_id: str):
+        path = self._path_for(app_id)
         return render_icon(path, app_id) if path else None
 
     def color_image(self, app_id: str):
-        path = self._app_paths.get(app_id)
+        path = self._path_for(app_id)
         return bundle_icns(path) if path else None
 
     def set_volume(self, app_id: str, vol: int) -> None:

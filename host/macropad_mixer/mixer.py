@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
@@ -45,6 +46,7 @@ class Mixer:
         poll: float = 2.0,
         clock: Callable[[], float] = time.monotonic,
         pins: Pins | None = None,
+        icon_store: Path | None = None,
         displays: DisplayBackend | None = None,
         bright_step: int = 5,
     ) -> None:
@@ -73,7 +75,8 @@ class Mixer:
         loader = getattr(backend, "icon_image", None)
         self.icons = (IconCache(loader, getattr(backend, "icon_inset", 0.0),
                                 getattr(backend, "color_image", None),
-                                getattr(backend, "icon_keep_outline", False)) if loader else None)
+                                getattr(backend, "icon_keep_outline", False),
+                                store_dir=icon_store) if loader else None)
         self._icons_sent: set[str] = set()  # per connection; the device forgets on reboot
 
     # --- helpers -----------------------------------------------------------
@@ -254,18 +257,20 @@ class Mixer:
         self.send_apps()
 
     def send_icons(self) -> None:
-        """Send icons that finished loading for listed apps the device hasn't received yet."""
+        """Send icons that finished loading for every app on a key (pinned apps that aren't
+        running included) that the device hasn't received yet."""
         if self.icons is None:
             return
-        for a in self.apps:
-            if a.id in self._icons_sent:
+        on_keys = [a.id for a in self.apps] + [p["id"] for p in self.pins.slots.values()]
+        for app_id in dict.fromkeys(on_keys):
+            if app_id in self._icons_sent:
                 continue
-            entry = self.icons.get(a.id)
+            entry = self.icons.get(app_id)
             if entry is not None:
-                self._icons_sent.add(a.id)
                 bits, color = entry
                 if bits or color is not None:
-                    self._send(icon_msg(a.id, bits, color))
+                    self._icons_sent.add(app_id)
+                    self._send(icon_msg(app_id, bits, color))
 
     def _apply(self, fn: Callable[[], None]) -> None:
         try:

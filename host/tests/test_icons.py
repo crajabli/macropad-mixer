@@ -99,3 +99,54 @@ def test_color_loader_is_used_for_colour():
     bits, color = cache.get("a")
     assert bits and color == 0x00FF00
     cache.close()
+
+
+def test_pinned_app_that_is_not_running_still_gets_its_icon_and_colour():
+    # Regression: after a daemon restart, pinned apps that hadn't played yet lost logo + colour.
+    from macropad_mixer.pins import Pins
+
+    pins = Pins()
+    pins.toggle(0, "a", "Alpha")
+    backend = IconBackend([], report_volume=False)     # nothing playing
+    link = FakeLink()
+    mixer = Mixer(backend, link, clock=Clock(), pins=pins)
+    mixer.tick()
+    wait_for(lambda: mixer.icons.ready("a"))
+    mixer.tick()
+    assert [m["id"] for m in link.take("icon")] == ["a"]
+    mixer.icons.close()
+
+
+def test_icons_survive_a_restart_via_the_store(tmp_path):
+    from macropad_mixer.icons import IconCache
+
+    first = IconCache(lambda _id: sample_icon(), 0.07, store_dir=tmp_path)
+    first.get("a")
+    wait_for(lambda: first.ready("a"))
+    saved = first.get("a")
+    first.close()
+
+    # Restarted daemon: the app can't be located now, but the saved look is used.
+    second = IconCache(lambda _id: None, 0.07, store_dir=tmp_path)
+    second.get("a")
+    wait_for(lambda: second.ready("a"))
+    assert second.get("a") == saved
+    second.close()
+
+
+def test_empty_result_is_retried_later():
+    from macropad_mixer.icons import RETRY_EMPTY, IconCache
+
+    clock = Clock()
+    found = {"ok": False}
+    cache = IconCache(lambda _id: sample_icon() if found["ok"] else None, 0.07, clock=clock)
+    cache.get("a")
+    wait_for(lambda: cache.ready("a"))
+    assert cache.get("a") == (None, None)
+    found["ok"] = True                         # e.g. the app got installed / located
+    assert cache.get("a") == (None, None)      # not retried yet
+    clock.t += RETRY_EMPTY + 1
+    assert cache.get("a") is None              # retry scheduled
+    wait_for(lambda: cache.ready("a"))
+    assert cache.get("a")[0]
+    cache.close()

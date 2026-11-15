@@ -8,8 +8,14 @@ from __future__ import annotations
 
 import base64
 import colorsys
+import json
 import logging
+import os
+import sys
 import threading
+import time
+from pathlib import Path
+from urllib.parse import quote
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
@@ -100,6 +106,19 @@ def icon_msg(app_id: str, bits: bytes | None, color: int | None, size: int = ICO
 
 Entry = tuple[bytes | None, int | None]  # (packed icon bits, LED colour)
 
+RETRY_EMPTY = 60.0  # seconds before retrying an app whose icon couldn't be loaded
+
+
+def default_store_dir() -> Path:
+    """Where converted icons/colours are kept, so pinned apps keep their look across restarts."""
+    if sys.platform == "darwin":
+        base = Path.home() / "Library" / "Caches"
+    elif sys.platform == "win32":
+        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+    else:
+        base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    return base / "macropad-mixer" / "icon-data"
+
 
 class IconCache:
     """Fetches icons on a worker thread so a slow lookup never stalls the knob.
@@ -116,7 +135,12 @@ class IconCache:
         inset: float = 0.0,
         color_loader: Callable[[str], Image.Image | None] | None = None,
         keep_outline: bool = False,
+        store_dir: Path | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
+        self._store = store_dir
+        self._clock = clock
+        self._empty_at: dict[str, float] = {}  # app id -> when a load came back empty
         self._loader = loader
         self._keep_outline = keep_outline
         self._color_loader = color_loader
@@ -129,7 +153,12 @@ class IconCache:
     def get(self, app_id: str) -> Entry | None:
         with self._lock:
             if app_id in self._bits:
-                return self._bits[app_id]
+                entry = self._bits[app_id]
+                empty_since = self._empty_at.get(app_id)
+                if empty_since is None or self._clock() - empty_since < RETRY_EMPTY:
+                    return entry
+                # Came back empty a while ago (e.g. a pinned app we couldn't locate): try again.
+                del self._bits[app_id], self._empty_at[app_id]
             if app_id in self._pending:
                 return None
             self._pending.add(app_id)
@@ -156,11 +185,44 @@ class IconCache:
                 color = dominant_color(src)
         except Exception:
             log.debug("colour for %s failed", app_id, exc_info=True)
+        if bits or color is not None:
+            self._save(app_id, bits, color)
+        else:
+            bits, color = self._restore(app_id)  # app not found now: use what we saw before
         with self._lock:
             self._bits[app_id] = (bits, color)
+            if not bits and color is None:
+                self._empty_at[app_id] = self._clock()
             self._pending.discard(app_id)
         log.debug("icon for %s: %s, colour %s", app_id, "ok" if bits else "none",
                   f"#{color:06x}" if color is not None else "none")
+
+    def _path(self, app_id: str) -> Path | None:
+        return self._store / (quote(app_id, safe="") + ".json") if self._store else None
+
+    def _save(self, app_id: str, bits: bytes | None, color: int | None) -> None:
+        path = self._path(app_id)
+        if path is None:
+            return
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            data = {"bits": base64.b64encode(bits).decode() if bits else None, "color": color}
+            path.write_text(json.dumps(data), encoding="utf-8")
+        except OSError as e:
+            log.debug("could not save icon for %s: %s", app_id, e)
+
+    def _restore(self, app_id: str) -> Entry:
+        path = self._path(app_id)
+        if path is None or not path.exists():
+            return None, None
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            bits = base64.b64decode(data["bits"]) if data.get("bits") else None
+            color = data.get("color") if isinstance(data.get("color"), int) else None
+            return bits, color
+        except (OSError, ValueError, KeyError) as e:
+            log.debug("could not read saved icon for %s: %s", app_id, e)
+            return None, None
 
     def close(self) -> None:
         self._pool.shutdown(wait=False, cancel_futures=True)
