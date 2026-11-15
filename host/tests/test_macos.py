@@ -55,3 +55,11 @@ def test_recent_output_window(monkeypatch):
         assert b.list_apps() == []
     finally:
         b.close()
+
+
+def test_finetune_itself_is_hidden():
+    # FineTune re-plays the audio of apps it adjusts, so Core Audio reports it as playing.
+    from macropad_mixer.backends import macos
+
+    assert macos._is_system(macos.FINETUNE_BUNDLE_ID)
+    assert not macos._is_system("com.spotify.client")

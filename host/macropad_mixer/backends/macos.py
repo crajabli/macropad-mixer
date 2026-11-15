@@ -207,7 +207,8 @@ def _start_time(pid: int) -> float:
 
 
 def _is_system(bundle_id: str) -> bool:
-    return bundle_id.startswith(SYSTEM_PREFIXES)
+    # FineTune re-plays every app it adjusts, so it shows up as an audio app itself; hide it.
+    return bundle_id.startswith(SYSTEM_PREFIXES) or bundle_id == FINETUNE_BUNDLE_ID
 
 
 def finetune_installed() -> bool:
