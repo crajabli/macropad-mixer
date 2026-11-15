@@ -1,0 +1,63 @@
+# MacroPad Mixer
+
+A hardware per-app volume mixer for the **Adafruit MacroPad RP2040**, like the Windows
+Volume Mixer on your desk, for macOS and Windows (Linux as a bonus).
+
+- Each of the 12 keys is automatically assigned an app that is currently playing audio,
+  most recently started first. With more than 12 apps the last key flips pages.
+- Press a key: the app's name and volume appear on the OLED and the key lights up.
+- Turn the knob: that app's volume changes in 5 % steps. Only that app, not the system volume.
+- Press the knob: mute or unmute that app.
+
+## How it works
+
+```
+MacroPad (CircuitPython)  <-- USB data serial, JSON lines -->  host daemon (Python)
+  keys / knob / OLED                                            ├─ macOS:   FineTune URL scheme (Core Audio taps)
+                                                                ├─ Windows: pycaw (WASAPI audio sessions)
+                                                                └─ Linux:   pulsectl (PulseAudio / PipeWire)
+```
+
+- `firmware/` runs on the MacroPad. `boot.py` enables a second USB serial port for data so
+  the normal console stays free for debugging.
+- `host/` is the daemon that runs on the computer. It lists audio apps, sends them to the
+  MacroPad, and applies volume changes. The device ↔ host protocol is in
+  [`docs/protocol.md`](docs/protocol.md).
+
+## Setup
+
+### 1. MacroPad firmware
+
+1. Install CircuitPython 9 or 10 on the MacroPad
+   ([guide](https://learn.adafruit.com/adafruit-macropad-rp2040/circuitpython)).
+2. Install `circup` (`pip install circup`) and run:
+
+   ```sh
+   tools/deploy_firmware.sh                 # macOS (uses /Volumes/CIRCUITPY)
+   tools/deploy_firmware.sh /path/to/CIRCUITPY   # other OSes
+   ```
+
+   On Windows without bash, copy `firmware/boot.py` and `firmware/code.py` to the
+   `CIRCUITPY` drive and run `circup install adafruit_macropad adafruit_display_text`.
+3. Press the MacroPad's **RESET** button once so `boot.py` enables the data port.
+   The OLED shows "Waiting for host...".
+
+### 2. Host daemon
+
+Requires Python 3.10+.
+
+```sh
+pip install -e "host"            # macOS
+pip install -e "host[windows]"   # Windows
+pip install -e "host[linux]"     # Linux
+macropad-mixer -v
+```
+
+**macOS** has no built-in per-app volume API, so the daemon drives
+[FineTune](https://github.com/ronitsingh10/FineTune) (free, open source, macOS 15+):
+`brew install --cask finetune`, start it once and grant it "Screen & System Audio Recording".
+
+## Status
+
+Early prototype. See [`docs/protocol.md`](docs/protocol.md) for the protocol and the
+roadmap on the design page.
