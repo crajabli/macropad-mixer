@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "macropad-mixer"
+version = "0.1.0"
+description = "Host daemon for an Adafruit MacroPad per-app volume mixer"
+requires-python = ">=3.10"
+dependencies = ["pyserial", "adafruit-board-toolkit"]
+
+[project.optional-dependencies]
+windows = ["pycaw", "comtypes", "psutil", "pywin32"]
+linux = ["pulsectl"]
+test = ["pytest"]
+
+[project.scripts]
+macropad-mixer = "macropad_mixer.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["macropad_mixer*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

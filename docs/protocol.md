@@ -6,7 +6,7 @@
   `usb_cdc.enable(console=True, data=True)`). The console port stays free for the REPL / debugging.
 - Host finds the port with `adafruit_board_toolkit.circuitpython_serial.data_comports()`
   (interface name starts with `CircuitPython CDC2`). Baud rate is ignored by USB CDC; use 115200.
-- Framing: **one UTF-8 JSON object per line**, terminated by `\n`. Max line length 1024 bytes;
+- Framing: **one UTF-8 JSON object per line**, terminated by `\n`. Max line length 4096 bytes (33 apps fit);
   longer lines are discarded by the receiver. Unknown `t` values and unknown fields are ignored
   (forward compatibility).
 - Every message has a type field `t`.

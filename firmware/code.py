@@ -16,7 +16,7 @@ from rainbowio import colorwheel
 FW_VERSION = "0.1.0"
 NUM_KEYS = 12
 HOST_TIMEOUT = 6.0  # seconds without any message -> host considered gone
-MAX_LINE = 1024
+MAX_LINE = 4096
 DELTA_INTERVAL = 0.05  # batch knob clicks, send at most every 50 ms
 DIM = 0.12  # brightness factor for unselected keys
 NEXT_PAGE_COLOR = 0x202020

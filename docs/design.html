@@ -1,0 +1,343 @@
+<title>MacroPad Mixer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one reading column with a hardware "spec sheet" feel; the device mock-up is the hero. */
+:root {
+  --bg: #f3f4f1;
+  --surface: #ffffff;
+  --fg: #1b1d1a;
+  --muted: #5c6159;
+  --line: #d9dcd4;
+  --accent: #0a7d5a;
+  --accent-soft: #dcefe6;
+  --oled: #050605;
+  --oled-fg: #e8f0ff;
+  --case: #26282a;
+  --display: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121412; --surface: #1a1d1a; --fg: #e7eae4; --muted: #9aa197;
+    --line: #2d322d; --accent: #4fd1a0; --accent-soft: #173327; --case: #0c0d0c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121412; --surface: #1a1d1a; --fg: #e7eae4; --muted: #9aa197;
+  --line: #2d322d; --accent: #4fd1a0; --accent-soft: #173327; --case: #0c0d0c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--body);
+  font-size: 16px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 880px; margin: 0 auto; padding-block: 48px 72px; display: grid; gap: 56px; }
+h1, h2, h3 { font-family: var(--display); line-height: 1.15; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2.2rem, 6vw, 3.4rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: 1.6rem; font-weight: 700; }
+h3 { font-size: 1.1rem; font-weight: 700; }
+p { margin: 0; max-width: 65ch; }
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+code { font-family: var(--mono); font-size: 0.88em; background: var(--accent-soft); padding: 0.1em 0.35em; border-radius: 4px; }
+.eyebrow { font-family: var(--mono); font-size: 0.78rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+section { display: grid; gap: 18px; }
+
+/* hero */
+.hero { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 40px; align-items: center; }
+.hero-text { display: grid; gap: 16px; min-width: 0; }
+.lede { font-size: 1.15rem; color: var(--muted); }
+.links { display: flex; flex-wrap: wrap; gap: 12px; }
+.btn { display: inline-block; font-weight: 600; text-decoration: none; padding: 10px 16px; border-radius: 8px; border: 1px solid var(--accent); }
+.btn.primary { background: var(--accent); color: var(--bg); }
+
+/* device mock */
+.device { background: var(--case); border-radius: 18px; padding: 18px; display: grid; gap: 14px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.18); max-width: 300px; justify-self: center; width: 100%; }
+.top { display: grid; grid-template-columns: 1fr 64px; gap: 14px; align-items: center; }
+.oled { background: var(--oled); border-radius: 4px; aspect-ratio: 2 / 1; padding: 8px 10px; font-family: var(--mono); color: var(--oled-fg); display: grid; align-content: space-between; min-width: 0; }
+.oled .name { font-size: 1.05rem; font-weight: 600; }
+.oled .sub { font-size: 0.7rem; }
+.oled .bar { height: 7px; border: 1px solid var(--oled-fg); }
+.oled .bar span { display: block; height: 100%; background: var(--oled-fg); width: 60%; transition: width 120ms; }
+.oled .stat { font-size: 0.62rem; opacity: 0.85; }
+.knob { width: 64px; height: 64px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #5a5e60, #1d1f20 70%); border: 2px solid #3a3d3f; position: relative; cursor: grab; }
+.knob::after { content: ""; position: absolute; top: 6px; left: 50%; width: 3px; height: 14px; background: #cfd4d6; transform: translateX(-50%); border-radius: 2px; }
+.keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.key { aspect-ratio: 1; border-radius: 6px; border: 0; background: #3b3f41; color: #dfe3e5; font-family: var(--mono); font-size: 0.6rem; display: grid; place-items: end center; padding: 4px; cursor: pointer; box-shadow: inset 0 -3px 0 rgb(0 0 0 / 0.35); position: relative; overflow: hidden; }
+.key[data-on]::before { content: ""; position: absolute; inset: 0; background: var(--glow); opacity: 0.28; }
+.key[aria-pressed="true"]::before { opacity: 0.85; }
+.key span { position: relative; }
+.hint { font-size: 0.8rem; color: var(--muted); text-align: center; }
+
+/* diagram */
+.diagram { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; overflow-x: auto; }
+.diagram svg { display: block; min-width: 640px; width: 100%; height: auto; }
+.diagram text { font-family: var(--body); fill: var(--fg); }
+.diagram .mono { font-family: var(--mono); fill: var(--muted); }
+.diagram .box { fill: var(--bg); stroke: var(--line); }
+.diagram .hl { fill: var(--accent-soft); stroke: var(--accent); }
+.diagram .arrow { stroke: var(--accent); stroke-width: 2; fill: none; }
+
+/* tables */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: 0; }
+th { font-family: var(--mono); font-size: 0.74rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+td code { white-space: nowrap; }
+
+/* platforms */
+.platforms { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.plat { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; display: grid; gap: 10px; align-content: start; min-width: 0; }
+.pill { justify-self: start; font-family: var(--mono); font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; }
+.pill.easy { color: var(--accent); }
+.pill.hard { color: #b4630a; }
+.plat ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 0.92rem; }
+
+/* decisions & roadmap */
+.decisions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.dec { border-top: 3px solid var(--accent); padding-top: 10px; display: grid; gap: 4px; min-width: 0; }
+.dec b { font-family: var(--display); font-size: 1.05rem; }
+.dec span { color: var(--muted); font-size: 0.92rem; }
+.road { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; counter-reset: step; }
+.road li { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; align-items: baseline; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.road li::before { counter-increment: step; content: counter(step); font-family: var(--mono); color: var(--muted); }
+.road .st { font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+.road .st.done { color: var(--accent); }
+footer { color: var(--muted); font-size: 0.85rem; }
+
+@media (max-width: 720px) {
+  .hero { grid-template-columns: 1fr; }
+  .platforms, .decisions { grid-template-columns: 1fr; }
+  .road li { grid-template-columns: 28px minmax(0, 1fr); }
+  .road .st { grid-column: 2; }
+}
+@media (prefers-reduced-motion: reduce) { .oled .bar span { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="hero">
+    <div class="hero-text">
+      <div class="eyebrow">Adafruit MacroPad RP2040 · CircuitPython · Python</div>
+      <h1>MacroPad Mixer</h1>
+      <p class="lede">A volume mixer you can put your hand on. Every key becomes an app that is playing sound, and the knob turns that app up or down without touching the rest of your system audio. Works on macOS and Windows.</p>
+      <div class="links">
+        <a class="btn primary" href="https://github.com/crajabli/macropad-mixer">GitHub repo</a>
+        <a class="btn" href="https://github.com/crajabli/macropad-mixer/blob/main/docs/protocol.md">Protocol spec</a>
+      </div>
+    </div>
+    <div>
+      <div class="device" role="group" aria-label="Interactive MacroPad mock-up">
+        <div class="top">
+          <div class="oled" aria-live="polite">
+            <div class="name" id="oled-name">Spotify</div>
+            <div class="sub" id="oled-sub">Volume 60%</div>
+            <div class="bar"><span id="oled-bar"></span></div>
+            <div class="stat" id="oled-stat">5 apps</div>
+          </div>
+          <button class="knob" id="knob" aria-label="Knob: click to mute, scroll or use arrow keys to change volume"></button>
+        </div>
+        <div class="keys" id="keys"></div>
+      </div>
+      <p class="hint">Example data. Click a key, scroll on the knob, click the knob to mute.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="eyebrow">Behavior</div>
+    <h2>What happens on the device</h2>
+    <div class="tbl"><table>
+      <thead><tr><th>You do</th><th>MacroPad shows</th><th>Computer does</th></tr></thead>
+      <tbody>
+        <tr><td>Plug it in</td><td>"Waiting for host…" until the daemon connects</td><td>Daemon finds the data serial port and sends the app list</td></tr>
+        <tr><td>Just look</td><td>One dimly lit key per audio app, newest first, each app with its own color</td><td>Re-checks running audio apps every 2 s</td></tr>
+        <tr><td>Press a key</td><td>App name, volume % and a bar on the OLED; that key glows bright</td><td>Notes the selection</td></tr>
+        <tr><td>Turn the knob</td><td>Volume updates in 5% steps</td><td>Sets that one app's volume, not the master</td></tr>
+        <tr><td>Press the knob</td><td>"MUTED", key turns red</td><td>Toggles that app's mute</td></tr>
+        <tr><td>More than 12 apps</td><td>Keys 1–11 are apps, key 12 flips to the next page</td><td>Sends up to 33 apps</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Architecture</div>
+    <h2>Two programs and a USB cable</h2>
+    <p>The MacroPad only handles buttons, lights and the screen. A small Python daemon on the computer does the audio work, with one backend per operating system. They talk over a second USB serial port that CircuitPython enables in <code>boot.py</code>, so the normal console stays free for debugging.</p>
+    <div class="diagram">
+      <svg viewBox="0 0 720 230" role="img" aria-label="MacroPad connects over USB serial to the host daemon, which uses FineTune on macOS, pycaw on Windows and pulsectl on Linux">
+        <rect class="box" x="10" y="60" width="190" height="110" rx="10"/>
+        <text x="105" y="95" text-anchor="middle" font-weight="700">MacroPad</text>
+        <text class="mono" x="105" y="120" text-anchor="middle" font-size="12">CircuitPython</text>
+        <text class="mono" x="105" y="140" text-anchor="middle" font-size="12">keys · knob · OLED</text>
+        <path class="arrow" d="M205 115 H 300"/>
+        <path class="arrow" d="M290 108 L300 115 L290 122"/>
+        <path class="arrow" d="M215 108 L205 115 L215 122"/>
+        <text class="mono" x="252" y="102" text-anchor="middle" font-size="11">USB serial</text>
+        <text class="mono" x="252" y="136" text-anchor="middle" font-size="11">JSON lines</text>
+        <rect class="hl" x="305" y="60" width="170" height="110" rx="10"/>
+        <text x="390" y="100" text-anchor="middle" font-weight="700">Host daemon</text>
+        <text class="mono" x="390" y="124" text-anchor="middle" font-size="12">Python</text>
+        <text class="mono" x="390" y="144" text-anchor="middle" font-size="12">macropad-mixer</text>
+        <path class="arrow" d="M480 95 L540 40"/>
+        <path class="arrow" d="M480 115 H540"/>
+        <path class="arrow" d="M480 135 L540 190"/>
+        <rect class="box" x="545" y="15" width="165" height="52" rx="8"/>
+        <text x="627" y="37" text-anchor="middle" font-weight="600" font-size="14">macOS</text>
+        <text class="mono" x="627" y="56" text-anchor="middle" font-size="11">FineTune URL scheme</text>
+        <rect class="box" x="545" y="89" width="165" height="52" rx="8"/>
+        <text x="627" y="111" text-anchor="middle" font-weight="600" font-size="14">Windows</text>
+        <text class="mono" x="627" y="130" text-anchor="middle" font-size="11">pycaw · WASAPI</text>
+        <rect class="box" x="545" y="163" width="165" height="52" rx="8"/>
+        <text x="627" y="185" text-anchor="middle" font-weight="600" font-size="14">Linux (bonus)</text>
+        <text class="mono" x="627" y="204" text-anchor="middle" font-size="11">pulsectl · PipeWire</text>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Protocol v1</div>
+    <h2>One JSON object per line</h2>
+    <p>The knob sends raw clicks; the computer turns them into volume and answers with the real value, so the computer is always the single source of truth.</p>
+    <div class="tbl"><table>
+      <thead><tr><th>Direction</th><th>Message</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>Computer → pad</td><td><code>{"t":"apps","apps":[…]}</code></td><td>Full app list: id, name, vol, mute; newest first</td></tr>
+        <tr><td>Computer → pad</td><td><code>{"t":"vol","id":…,"vol":55,"mute":false}</code></td><td>Current state of one app</td></tr>
+        <tr><td>Computer → pad</td><td><code>{"t":"ping"}</code></td><td>Heartbeat every 2 s; 6 s of silence means the computer is gone</td></tr>
+        <tr><td>Pad → computer</td><td><code>{"t":"hello","fw":"0.1.0"}</code></td><td>Sent on boot and reconnect</td></tr>
+        <tr><td>Pad → computer</td><td><code>{"t":"delta","id":…,"d":-2}</code></td><td>Knob clicks for the selected app, batched every 50 ms</td></tr>
+        <tr><td>Pad → computer</td><td><code>{"t":"mute","id":…}</code></td><td>Knob pressed: toggle mute</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Platforms</div>
+    <h2>Per-app volume on each OS</h2>
+    <div class="platforms">
+      <div class="plat">
+        <span class="pill easy">straightforward</span>
+        <h3>Windows</h3>
+        <ul>
+          <li><b>pycaw</b> wraps the same audio-session API the Windows Volume Mixer uses.</li>
+          <li>Group sessions by exe name: Chrome and Discord open several.</li>
+          <li>Scan every active output device, not only the default one.</li>
+          <li>Friendly names come from the exe's file description.</li>
+        </ul>
+      </div>
+      <div class="plat">
+        <span class="pill hard">the hard part</span>
+        <h3>macOS</h3>
+        <ul>
+          <li>No public per-app volume API. Apps that do it use <b>Core Audio process taps</b> (macOS 14.2+).</li>
+          <li>v1 drives <b>FineTune</b> (free, open source, macOS 15+) through its <code>finetune://</code> URL scheme.</li>
+          <li>FineTune can't report volumes back, so the daemon remembers them.</li>
+          <li>Later: our own Swift helper app using taps directly.</li>
+        </ul>
+      </div>
+      <div class="plat">
+        <span class="pill easy">straightforward</span>
+        <h3>Linux</h3>
+        <ul>
+          <li><b>pulsectl</b> sets per-stream volume on PulseAudio and PipeWire.</li>
+          <li>Streams are grouped by application name.</li>
+          <li>Untested so far.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Decisions</div>
+    <h2>Settled so far</h2>
+    <div class="decisions">
+      <div class="dec"><b>FineTune first on macOS</b><span>Working per-app volume today; replace with a Swift helper later.</span></div>
+      <div class="dec"><b>Newest apps first</b><span>Key 1 is the app that started most recently.</span></div>
+      <div class="dec"><b>5% per knob click</b><span>20 clicks from silent to full. Changeable with <code>--step</code>.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Roadmap</div>
+    <h2>Build order</h2>
+    <ol class="road">
+      <li><span>Firmware: data port, key assignment, OLED, knob, mute</span><span class="st done">in progress</span></li>
+      <li><span>Daemon core: port discovery, protocol, auto-assigning apps to keys</span><span class="st">in progress</span></li>
+      <li><span>macOS backend: list playing apps via Core Audio, volume via FineTune</span><span class="st">in progress</span></li>
+      <li><span>Windows backend with pycaw</span><span class="st">in progress</span></li>
+      <li><span>Own Swift helper on macOS, pinned "favorite" keys, Linux testing</span><span class="st">later</span></li>
+    </ol>
+  </section>
+
+  <footer>MacroPad Mixer · open an issue or PR on the repo to suggest changes.</footer>
+</div>
+
+<script>
+(() => {
+  const apps = [
+    { name: "Spotify", vol: 60, hue: 140 },
+    { name: "Chrome", vol: 100, hue: 45 },
+    { name: "Discord", vol: 75, hue: 235 },
+    { name: "Zoom", vol: 90, hue: 205 },
+    { name: "Music", vol: 40, hue: 350 },
+  ].map(a => ({ ...a, mute: false }));
+  let sel = 0;
+  const keys = document.getElementById("keys");
+  const nameEl = document.getElementById("oled-name");
+  const subEl = document.getElementById("oled-sub");
+  const barEl = document.getElementById("oled-bar");
+  const statEl = document.getElementById("oled-stat");
+  statEl.textContent = apps.length + " apps";
+
+  const buttons = [];
+  for (let i = 0; i < 12; i++) {
+    const b = document.createElement("button");
+    b.className = "key";
+    const app = apps[i];
+    if (app) {
+      b.dataset.on = "";
+      b.innerHTML = "<span></span>";
+      b.querySelector("span").textContent = app.name;
+      b.addEventListener("click", () => { sel = i; render(); });
+    } else {
+      b.disabled = true;
+      b.setAttribute("aria-label", "Unassigned key");
+    }
+    keys.appendChild(b);
+    buttons.push(b);
+  }
+
+  function render() {
+    apps.forEach((a, i) => {
+      const b = buttons[i];
+      b.style.setProperty("--glow", a.mute ? "hsl(0 90% 55%)" : `hsl(${a.hue} 85% 55%)`);
+      b.setAttribute("aria-pressed", String(i === sel));
+    });
+    const a = apps[sel];
+    nameEl.textContent = a.name;
+    subEl.textContent = a.mute ? `MUTED  (${a.vol}%)` : `Volume ${a.vol}%`;
+    barEl.style.width = a.vol + "%";
+  }
+
+  function nudge(clicks) {
+    const a = apps[sel];
+    a.vol = Math.max(0, Math.min(100, a.vol + clicks * 5));
+    render();
+  }
+
+  const knob = document.getElementById("knob");
+  knob.addEventListener("wheel", e => { e.preventDefault(); nudge(e.deltaY < 0 ? 1 : -1); }, { passive: false });
+  knob.addEventListener("click", () => { apps[sel].mute = !apps[sel].mute; render(); });
+  knob.addEventListener("keydown", e => {
+    if (e.key === "ArrowUp" || e.key === "ArrowRight") { e.preventDefault(); nudge(1); }
+    if (e.key === "ArrowDown" || e.key === "ArrowLeft") { e.preventDefault(); nudge(-1); }
+  });
+  render();
+})();
+</script>
