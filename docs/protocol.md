@@ -43,7 +43,7 @@
 | `sel` | `id` | A key was pressed and this app is now selected (informational). |
 | `delta` | `id`, `d` (int, ± clicks, non-zero) | Knob turned while `id` selected. Device may batch clicks (send at most every 50 ms). |
 | `mute` | `id` | Knob pressed: toggle mute of `id`. |
-| `pin` | `k` (slot index), `id` (app on that key, or `null` if empty) | Key held for 1.5 s. The host pins `id` to slot `k`, or unpins if it is already pinned there, saves the pins, replies with a `note` and a new `apps`. Only slots 0–11 can hold pins. |
+| `pin` | `k` (slot index), `id` (app on that key, or `null` if empty) | Pin request. Held key with an unpinned app: pin it there. Held key with a pinned app enters move mode on the device; the next key press sends `pin` with that key's slot and the moving app's id. The host: `id` already pinned on `k` → unpin; `id` pinned elsewhere → move it (an app pinned on `k` swaps into the old key); otherwise pin it on `k`. It saves the pins and replies with a `note` and a new `apps`. Only slots 0–11 can hold pins. |
 | `pong` | — | Reply to `ping`. |
 
 ## Key layout and pins

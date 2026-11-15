@@ -60,15 +60,18 @@ def test_long_press_again_unpins():
     assert ids([m for m in sent if m["t"] == "apps"][-1]["apps"]) == ["c", "b", "a"]
 
 
-def test_pinning_moves_an_app_and_replaces_the_previous_pin():
+def test_pinning_moves_swaps_and_replaces():
     pins = Pins()
-    pins.toggle(0, "a", "Alpha")
-    pins.toggle(2, "a", "Alpha")          # moves
+    assert pins.toggle(0, "a", "Alpha") == "Pinned to key 1"
+    assert pins.toggle(2, "a", "Alpha") == "Moved to key 3"
     assert pins.slots == {2: {"id": "a", "name": "Alpha"}}
-    pins.toggle(2, "b", "Beta")           # replaces
-    assert pins.slots == {2: {"id": "b", "name": "Beta"}}
+    pins.toggle(5, "b", "Beta")
+    assert pins.toggle(5, "a", "Alpha") == "Swapped keys 3+6"   # a -> 5, b -> a's old key 2
+    assert pins.slots == {5: {"id": "a", "name": "Alpha"}, 2: {"id": "b", "name": "Beta"}}
+    pins.toggle(5, "c", "Gamma")          # unpinned app onto a pinned key: replaces
+    assert pins.slots == {5: {"id": "c", "name": "Gamma"}, 2: {"id": "b", "name": "Beta"}}
     assert pins.toggle(12, "a", "Alpha") == "Pin on page 1 only"
-    assert pins.toggle(5, None, None) == "No app to pin"
+    assert pins.toggle(7, None, None) == "No app to pin"   # empty key
 
 
 def test_pins_persist(tmp_path):

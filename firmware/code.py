@@ -14,7 +14,7 @@ from adafruit_display_text import label
 from adafruit_macropad import MacroPad
 from rainbowio import colorwheel
 
-FW_VERSION = "0.4.0"
+FW_VERSION = "0.5.0"
 NUM_KEYS = 12
 HOST_TIMEOUT = 6.0  # seconds without any message -> host considered gone
 MAX_LINE = 4096
@@ -22,6 +22,7 @@ DELTA_INTERVAL = 0.05  # batch knob clicks, send at most every 50 ms
 LONG_PRESS = 1.5  # seconds a key is held to pin/unpin its app
 NOTE_TIME = 2.0  # seconds a host note stays on the status line
 IDLE_PIN_DIM = 0.3  # extra dimming for pinned apps that aren't running
+MOVE_TIMEOUT = 6.0  # seconds before move mode gives up
 DIM = 0.12  # brightness factor for unselected keys
 NEXT_PAGE_COLOR = 0x202020
 ICON_MAX = 32  # largest icon side we accept (px)
@@ -115,6 +116,8 @@ key_down = {}  # key -> monotonic time pressed
 long_fired = set()  # keys whose long press already triggered
 note_text = ""
 note_until = 0.0
+moving = None  # move mode: {"id", "name", "src" (slot), "since"} after holding a pinned key
+blink_phase = 0
 
 
 def layout():
@@ -251,6 +254,9 @@ def handle(msg):
 
 def on_key(key):
     global selected, page, dirty, pending_clicks
+    if moving is not None:
+        finish_move(key)
+        return
     target = app_for_key(key)
     if target == "next":
         page = (page + 1) % page_count()
@@ -262,17 +268,47 @@ def on_key(key):
     dirty = True
 
 
+def show_note(text):
+    global note_text, note_until, dirty
+    note_text, note_until, dirty = text[:21], time.monotonic() + NOTE_TIME, True
+
+
+def slot_of(key):
+    per, _ = layout()
+    return page * per + key
+
+
 def check_long_press(now):
-    """Holding a key pins its app to that key (or unpins it); the host decides and replies."""
+    """Holding a key: an unpinned app is pinned to that key; a pinned app enters move mode,
+    where the next key press moves (or swaps) it there, or unpins it on the same key."""
+    global moving, dirty
     for key, since in key_down.items():
         if key in long_fired or now - since < LONG_PRESS:
             continue
         long_fired.add(key)
-        target = app_for_key(key)
-        if target == "next":
+        if moving is not None:
             continue
-        per, _ = layout()
-        send({"t": "pin", "k": page * per + key, "id": target["id"] if target else None})
+        target = app_for_key(key)
+        if target is None:
+            show_note("Empty key")
+        elif target == "next":
+            continue
+        elif target["pin"]:
+            moving = {"id": target["id"], "name": target["name"], "src": slot_of(key), "since": now}
+            dirty = True
+        else:
+            send({"t": "pin", "k": slot_of(key), "id": target["id"]})
+
+
+def finish_move(key):
+    """Key pressed in move mode: the host pins the app there (same key = unpin)."""
+    global moving, page, dirty
+    if app_for_key(key) == "next":  # let the user flip pages while moving
+        page = (page + 1) % page_count()
+    else:
+        send({"t": "pin", "k": slot_of(key), "id": moving["id"]})
+        moving = None
+    dirty = True
 
 
 def flush_delta(now):
@@ -301,6 +337,8 @@ def render():
             if not target["run"]:  # pinned but not running: keep the key, very dim
                 level *= IDLE_PIN_DIM
             macropad.pixels[key] = scale(color, level)
+        if moving is not None and slot_of(key) == moving["src"]:
+            macropad.pixels[key] = 0xFFFFFF if blink_phase % 2 else 0
     macropad.pixels.show()
 
     # OLED
@@ -319,6 +357,12 @@ def render():
 
     pages = page_count()
     page_info = "  p%d/%d" % (page + 1, pages) if pages > 1 else ""
+    if moving is not None:
+        set_title("Move " + moving["name"], icons.get(moving["id"]))
+        subtitle.text = "Press a key"
+        status.text = "same key = unpin"
+        bar.hidden = True
+        return
     running = sum(1 for a in apps if a is not None and a["run"])
     app = find_app(selected) if selected else None
     pin_info = "pinned | " if app is not None and app["pin"] else ""
@@ -391,8 +435,19 @@ while True:
         last_encoder = position
     flush_delta(now)
 
+    if moving is not None:
+        if now - moving["since"] > MOVE_TIMEOUT or not connected:
+            moving = None
+            show_note("Move cancelled")
+        elif int(now * 4) != blink_phase:
+            blink_phase = int(now * 4)
+            dirty = True
+
     macropad.encoder_switch_debounced.update()
-    if macropad.encoder_switch_debounced.pressed and connected and selected:
+    if macropad.encoder_switch_debounced.pressed and moving is not None:
+        moving = None
+        show_note("Move cancelled")
+    elif macropad.encoder_switch_debounced.pressed and connected and selected:
         send({"t": "mute", "id": selected})
 
     if dirty:

@@ -64,7 +64,12 @@ class Pins:
         return next((k for k, v in self.slots.items() if v["id"] == app_id), None)
 
     def toggle(self, key: int, app_id: str | None, name: str | None) -> str:
-        """Long-press on `key` showing `app_id`: pin it there, or unpin if it's already pinned there.
+        """Pin `app_id` to `key` (sent by the MacroPad after a long-press or a move).
+
+        - `app_id` already pinned to `key`: unpin it.
+        - `app_id` pinned elsewhere: move it; a different app pinned on `key` swaps into the
+          old key.
+        - otherwise: pin it to `key`, replacing any app pinned there.
 
         Returns a short message for the OLED.
         """
@@ -78,11 +83,20 @@ class Pins:
         if app_id is None:
             return "No app to pin"
         old = self.key_of(app_id)
-        if old is not None:
+        entry = {"id": app_id, "name": name or app_id}
+        if old is None:
+            self.slots[key] = entry
+            msg = f"Pinned to key {key + 1}"
+        else:
             del self.slots[old]
-        self.slots[key] = {"id": app_id, "name": name or app_id}
+            if current is not None:  # swap the other pinned app into the freed key
+                self.slots[old] = current
+                msg = f"Swapped keys {old + 1}+{key + 1}"
+            else:
+                msg = f"Moved to key {key + 1}"
+            self.slots[key] = entry
         self.save()
-        return f"Pinned to key {key + 1}"
+        return msg
 
     def rename(self, app_id: str, name: str) -> None:
         """Remember the latest name so a pinned app that isn't running still shows it."""

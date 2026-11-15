@@ -10,7 +10,9 @@ Volume Mixer on your desk, for macOS and Windows (Linux as a bonus).
 - Turn the knob: that app's volume changes in 5 % steps. Only that app, not the system volume.
 - Press the knob: mute or unmute that app.
 - Hold a key for 1.5 s: pin the app to that key, so it's always there (even when it isn't running,
-  shown dimly). Hold it again to unpin.
+  shown dimly).
+- Hold a pinned key: it blinks; press another key to move the pin there (swapping with another
+  pinned app), press the same key to unpin, or press the knob to cancel.
 
 ## How it works
 
