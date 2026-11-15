@@ -28,6 +28,7 @@
 | `t` | Fields | Meaning |
 |-----|--------|---------|
 | `apps` | `apps`: list of `{id, name, vol, mute}` (max 33) | Full replacement of the app list. Sent on connect (after `hello`), whenever the set or order of apps changes, and at least every 30 s. |
+| `note` | `text` (max 21 chars) | Short message the device shows on its status line for 2 s (e.g. "Pinned to key 3"). |
 | `vol` | `id`, `vol`, `mute` | Current state of one app (reply to `delta`/`mute`, or external change). |
 | `icon` | `id`, optional `w`, `h`, `b`, optional `c` | `c`: the app's brand colour for its key LED as an integer 0xRRGGBB. `w`/`h`/`b`: app icon as 1-bit pixels: `b` is base64 of packed rows (MSB = leftmost pixel, each row padded to whole bytes, 1 = lit). Currently 32×32 = 128 bytes. Sent once per app per connection (again after every `hello`), after the `apps` message that lists the app. Max side 32 px. Optional: apps without an icon get none. |
 | `ping` | — | Heartbeat, every 2 s. |
@@ -42,7 +43,22 @@
 | `sel` | `id` | A key was pressed and this app is now selected (informational). |
 | `delta` | `id`, `d` (int, ± clicks, non-zero) | Knob turned while `id` selected. Device may batch clicks (send at most every 50 ms). |
 | `mute` | `id` | Knob pressed: toggle mute of `id`. |
+| `pin` | `k` (slot index), `id` (app on that key, or `null` if empty) | Key held for 1.5 s. The host pins `id` to slot `k`, or unpins if it is already pinned there, saves the pins, replies with a `note` and a new `apps`. Only slots 0–11 can hold pins. |
 | `pong` | — | Reply to `ping`. |
+
+## Key layout and pins
+
+The host decides which app sits on which key. Each `apps` entry is one slot, in key order;
+an entry may be `null` (an empty key). Entries may carry:
+
+- `pin: true` — the user pinned this app to this key (long-press on the MacroPad).
+- `run: false` — pinned but not running: the key stays reserved, dimly lit, and the OLED
+  shows "Not running".
+
+Pinned apps take their keys; all other apps fill the free slots most-recent first. Pins are
+saved by the host (`pins.json` in the user's app-config directory) so they survive restarts.
+With more than 12 slots the device pages (keys 1–11 per page, key 12 = next page), so a pin on
+key 12 moves to page 2 while paging is needed.
 
 ## Connection state
 

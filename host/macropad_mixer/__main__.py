@@ -64,10 +64,11 @@ def main(argv: list[str] | None = None) -> None:
 
     from .link import SerialLink
     from .mixer import Mixer
+    from .pins import Pins, default_path
 
     backend = load_backend(args.backend)
     link = SerialLink(args.port)
-    mixer = Mixer(backend, link, step=args.step, poll=args.poll)
+    mixer = Mixer(backend, link, step=args.step, poll=args.poll, pins=Pins(default_path()))
     logging.getLogger(__name__).info("macropad-mixer started (backend %s)", type(backend).__name__)
     try:
         mixer.run()

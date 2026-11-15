@@ -14,7 +14,7 @@ MAX_NAME = 20
 
 # Device -> host message types we understand; anything else is ignored.
 # ("ping" isn't in v1's device->host table, but we answer it with "pong" if it arrives.)
-DEVICE_TYPES = {"hello", "sel", "delta", "mute", "pong", "ping"}
+DEVICE_TYPES = {"hello", "sel", "delta", "mute", "pong", "ping", "pin"}
 
 
 def encode(msg: dict[str, Any]) -> bytes:
@@ -29,7 +29,7 @@ def app_entry(app_id: str, name: str, vol: int | None, mute: bool | None) -> dic
     return {"id": app_id, "name": name[:MAX_NAME], "vol": vol, "mute": bool(mute)}
 
 
-def encode_apps(apps: list[dict[str, Any]]) -> bytes:
+def encode_apps(apps: list[dict[str, Any] | None]) -> bytes:
     """Encode an `apps` message, dropping trailing apps until it fits MAX_LINE.
 
     The device discards lines over MAX_LINE, so a shorter list beats no list.
@@ -66,6 +66,12 @@ def decode(line: bytes | str) -> dict[str, Any] | None:
     t = msg["t"]
     if t in ("sel", "delta", "mute") and not isinstance(msg.get("id"), str):
         return None
+    if t == "pin":
+        k = msg.get("k")
+        if not isinstance(k, int) or isinstance(k, bool) or k < 0:
+            return None
+        if msg.get("id") is not None and not isinstance(msg.get("id"), str):
+            return None
     if t == "delta":
         d = msg.get("d")
         if not isinstance(d, int) or isinstance(d, bool) or d == 0:

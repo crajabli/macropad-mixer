@@ -10,6 +10,7 @@ from typing import Callable, Protocol
 from . import protocol
 from .backends.base import AppInfo, AudioBackend
 from .icons import IconCache, icon_msg
+from .pins import PINNABLE_KEYS, Pins
 
 log = logging.getLogger(__name__)
 
@@ -40,8 +41,10 @@ class Mixer:
         step: int = 5,
         poll: float = 2.0,
         clock: Callable[[], float] = time.monotonic,
+        pins: Pins | None = None,
     ) -> None:
         self.backend = backend
+        self.pins = pins if pins is not None else Pins()  # in-memory unless a file is given
         self.link = link
         self.step = step
         self.poll = poll
@@ -51,7 +54,7 @@ class Mixer:
         # Apps stay on their keys after they stop playing (e.g. paused) until they quit.
         self._seen: dict[str, AppInfo] = {}        # last known info per app id
         self._last_listed: dict[str, float] = {}   # clock() when the backend last listed it
-        self._signature: tuple[tuple[str, str], ...] | None = None
+        self._signature: tuple | None = None
         self._last_poll = float("-inf")
         self._last_ping = float("-inf")
         self._last_apps_sent = float("-inf")
@@ -71,12 +74,41 @@ class Mixer:
     def _send(self, msg: dict) -> None:
         self.link.send(protocol.encode(msg))
 
+    def _entry(self, app_id: str, name: str) -> dict:
+        s = self._state(app_id)
+        return protocol.app_entry(app_id, name, s.vol, s.mute)
+
+    def layout(self) -> list[dict | None]:
+        """Key slots for the device: pinned apps on their keys (running or not), the other apps
+        filling the free slots most-recent first. None = empty key."""
+        running = {a.id: a for a in self.apps}
+        slots: list[dict | None] = [None] * PINNABLE_KEYS
+        for key, pin in self.pins.slots.items():
+            app = running.get(pin["id"])
+            entry = self._entry(pin["id"], app.name if app else pin["name"])
+            entry["pin"] = True
+            if app is None:
+                entry["run"] = False
+            slots[key] = entry
+        pinned = {p["id"] for p in self.pins.slots.values()}
+        rest = iter(a for a in self.apps if a.id not in pinned)
+        for i, slot in enumerate(slots):
+            if slot is None:
+                app = next(rest, None)
+                if app is None:
+                    break
+                slots[i] = self._entry(app.id, app.name)
+        slots.extend(self._entry(a.id, a.name) for a in rest)
+        while slots and slots[-1] is None:
+            slots.pop()
+        return slots[: protocol.MAX_APPS]
+
+    def _layout_signature(self) -> tuple:
+        return tuple((e["id"], e["name"], e.get("pin"), e.get("run", True)) if e else None
+                     for e in self.layout())
+
     def send_apps(self) -> None:
-        entries = []
-        for a in self.apps:
-            s = self._state(a.id)
-            entries.append(protocol.app_entry(a.id, a.name, s.vol, s.mute))
-        self.link.send(protocol.encode_apps(entries))
+        self.link.send(protocol.encode_apps(self.layout()))
         self._last_apps_sent = self.clock()
 
     def _send_vol(self, app_id: str) -> None:
@@ -102,7 +134,9 @@ class Mixer:
                 s.vol, s.mute = new_vol, new_mute
                 changed_vol.append(a.id)
         self.apps = apps
-        signature = tuple((a.id, a.name[: protocol.MAX_NAME]) for a in apps)
+        for a in apps:
+            self.pins.rename(a.id, a.name)
+        signature = self._layout_signature()
         if signature != self._signature:
             self._signature = signature
             log.info("apps: %s", ", ".join(a.id for a in apps) or "(none)")
@@ -159,6 +193,19 @@ class Mixer:
             self._send_vol(msg["id"])
         elif t == "sel":
             log.debug("selected %s", msg["id"])
+        elif t == "pin":
+            self._toggle_pin(msg["k"], msg.get("id"))
+
+    def _toggle_pin(self, key: int, app_id: str | None) -> None:
+        name = next((a.name for a in self.apps if a.id == app_id), None)
+        if app_id is not None and name is None:
+            k = self.pins.key_of(app_id)
+            name = self.pins.slots[k]["name"] if k is not None else app_id
+        note = self.pins.toggle(key, app_id, name)
+        log.info("%s (%s)", note, app_id)
+        self._send({"t": "note", "text": note})
+        self._signature = self._layout_signature()
+        self.send_apps()
 
     def send_icons(self) -> None:
         """Send icons that finished loading for listed apps the device hasn't received yet."""

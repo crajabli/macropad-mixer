@@ -14,11 +14,14 @@ from adafruit_display_text import label
 from adafruit_macropad import MacroPad
 from rainbowio import colorwheel
 
-FW_VERSION = "0.3.0"
+FW_VERSION = "0.4.0"
 NUM_KEYS = 12
 HOST_TIMEOUT = 6.0  # seconds without any message -> host considered gone
 MAX_LINE = 4096
 DELTA_INTERVAL = 0.05  # batch knob clicks, send at most every 50 ms
+LONG_PRESS = 1.5  # seconds a key is held to pin/unpin its app
+NOTE_TIME = 2.0  # seconds a host note stays on the status line
+IDLE_PIN_DIM = 0.3  # extra dimming for pinned apps that aren't running
 DIM = 0.12  # brightness factor for unselected keys
 NEXT_PAGE_COLOR = 0x202020
 ICON_MAX = 32  # largest icon side we accept (px)
@@ -108,6 +111,10 @@ rx_buf = bytearray()
 pending_clicks = 0
 last_delta_sent = 0.0
 dirty = True
+key_down = {}  # key -> monotonic time pressed
+long_fired = set()  # keys whose long press already triggered
+note_text = ""
+note_until = 0.0
 
 
 def layout():
@@ -146,7 +153,7 @@ def scale(color, factor):
 
 def find_app(app_id):
     for app in apps:
-        if app["id"] == app_id:
+        if app is not None and app["id"] == app_id:
             return app
     return None
 
@@ -189,19 +196,24 @@ def read_messages():
 
 
 def handle(msg):
-    global apps, selected, page, dirty
+    global apps, selected, page, dirty, note_text, note_until
     kind = msg.get("t")
     if kind == "ping":
         send({"t": "pong"})
     elif kind == "apps":
-        apps = [
-            {"id": str(a["id"]), "name": str(a.get("name") or a["id"])[:20]}
-            for a in msg.get("apps", [])[:33]
-            if isinstance(a, dict) and "id" in a
-        ]
+        apps = []  # None entries are empty keys (slots around pinned apps)
         for a in msg.get("apps", [])[:33]:
-            if isinstance(a, dict) and "id" in a:
-                state[str(a["id"])] = {"vol": a.get("vol"), "mute": bool(a.get("mute"))}
+            if not (isinstance(a, dict) and "id" in a):
+                apps.append(None)
+                continue
+            app_id = str(a["id"])
+            apps.append({
+                "id": app_id,
+                "name": str(a.get("name") or app_id)[:20],
+                "pin": bool(a.get("pin")),
+                "run": a.get("run", True) is not False,
+            })
+            state[app_id] = {"vol": a.get("vol"), "mute": bool(a.get("mute"))}
         if selected is not None and find_app(selected) is None:
             selected = None
         for cache in (icons, colors):  # forget icons/colours of apps that went away
@@ -223,6 +235,10 @@ def handle(msg):
         if isinstance(msg.get("c"), int):
             colors[app_id] = msg["c"] & 0xFFFFFF
         dirty = True  # key colours may have changed
+    elif kind == "note":
+        note_text = str(msg.get("text", ""))[:21]
+        note_until = time.monotonic() + NOTE_TIME
+        dirty = True
     elif kind == "vol":
         app_id = msg.get("id")
         if app_id is not None:
@@ -244,6 +260,19 @@ def on_key(key):
         selected = target["id"]
         send({"t": "sel", "id": selected})
     dirty = True
+
+
+def check_long_press(now):
+    """Holding a key pins its app to that key (or unpins it); the host decides and replies."""
+    for key, since in key_down.items():
+        if key in long_fired or now - since < LONG_PRESS:
+            continue
+        long_fired.add(key)
+        target = app_for_key(key)
+        if target == "next":
+            continue
+        per, _ = layout()
+        send({"t": "pin", "k": page * per + key, "id": target["id"] if target else None})
 
 
 def flush_delta(now):
@@ -268,7 +297,10 @@ def render():
         else:
             muted = state.get(target["id"], {}).get("mute")
             color = 0xFF0000 if muted else app_color(target["id"])
-            macropad.pixels[key] = scale(color, 1.0 if target["id"] == selected else DIM)
+            level = 1.0 if target["id"] == selected else DIM
+            if not target["run"]:  # pinned but not running: keep the key, very dim
+                level *= IDLE_PIN_DIM
+            macropad.pixels[key] = scale(color, level)
     macropad.pixels.show()
 
     # OLED
@@ -287,14 +319,22 @@ def render():
 
     pages = page_count()
     page_info = "  p%d/%d" % (page + 1, pages) if pages > 1 else ""
-    status.text = "%d apps%s" % (len(apps), page_info)
+    running = sum(1 for a in apps if a is not None and a["run"])
     app = find_app(selected) if selected else None
+    pin_info = "pinned | " if app is not None and app["pin"] else ""
+    status.text = "%s%d apps%s" % (pin_info, running, page_info)
+    if note_until:
+        status.text = note_text
     if app is None:
         set_title("Pick an app" if apps else "No audio apps")
         subtitle.text = "Press a lit key" if apps else "Play something..."
         bar.hidden = True
         return
     set_title(app["name"], icons.get(app["id"]))
+    if not app["run"]:
+        subtitle.text = "Not running"
+        bar.hidden = True
+        return
     st = state.get(app["id"], {})
     vol = st.get("vol")
     if st.get("mute"):
@@ -330,8 +370,19 @@ while True:
             dirty = True
 
     event = macropad.keys.events.get()
-    if event and event.pressed and connected:
-        on_key(event.key_number)
+    if event:
+        if event.pressed:
+            key_down[event.key_number] = now
+            if connected:
+                on_key(event.key_number)
+        else:
+            key_down.pop(event.key_number, None)
+            long_fired.discard(event.key_number)
+    if connected:
+        check_long_press(now)
+    if note_until and now > note_until:
+        note_until = 0.0
+        dirty = True
 
     position = macropad.encoder
     if position != last_encoder:
