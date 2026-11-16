@@ -96,8 +96,14 @@ def test_summary_max_volume_all_muted_earliest_start():
     )["chrome.exe"]
     info = w.summarize_group(g, lambda grp: "Google Chrome")
     assert info == AppInfo(
-        id="chrome.exe", name="Google Chrome", started=200.0, vol=70, mute=False
+        id="chrome.exe", name="Google Chrome", started=200.0, vol=70, mute=False, playing=True
     )
+
+
+def test_summary_playing_only_when_a_session_is_active():
+    g = w.group_sessions([rec("spotify.exe", 1, state=w.STATE_INACTIVE),
+                          rec("spotify.exe", 2, state=w.STATE_INACTIVE)])["spotify.exe"]
+    assert w.summarize_group(g, lambda grp: "Spotify").playing is False
 
     g2 = w.group_sessions(
         [rec("a.exe", 1, muted=True), rec("a.exe", 2, muted=True, vol=0.0)]

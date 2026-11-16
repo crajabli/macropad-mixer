@@ -175,6 +175,7 @@ def summarize_group(
         started=min(starts) if starts else 0.0,
         vol=volume_to_percent(max(vols)) if vols else None,
         mute=all(mutes) if mutes else None,
+        playing=any(s.state == STATE_ACTIVE for s in group.sessions),
     )
 
 

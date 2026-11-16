@@ -116,9 +116,10 @@ class AudioBackend(Protocol):
 
 ### Keeping paused apps on their keys
 
-`list_apps()` reports apps that are playing (or recently played) audio. When an app drops out of
-that list, for example because it was paused, the daemon keeps it (same slot, last known name and
-start time) as long as `backend.app_alive(app_id)` is true, i.e. until the app quits.
+`list_apps()` reports apps that are playing (or recently played) audio, each with `playing`
+(False = listed but silent, None = unknown, counts as playing). Unpinned apps keep their key
+until they have been silent for `forget_after` seconds (default 60). Pinned apps keep showing as
+running while `backend.app_alive(app_id)` is true, i.e. until the app quits.
 `app_alive` must be cheap (it is called every poll for each kept app), must not raise, and should
 answer True for any process belonging to the app id (main process or helper), using the PIDs the
 backend saw in `list_apps()`. Backends without `app_alive` fall back to keeping an app for

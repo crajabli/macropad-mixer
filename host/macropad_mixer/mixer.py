@@ -49,7 +49,9 @@ class Mixer:
         icon_store: Path | None = None,
         displays: DisplayBackend | None = None,
         bright_step: int = 5,
+        forget_after: float = 60.0,
     ) -> None:
+        self.forget_after = forget_after  # unpinned apps leave this long after their last sound
         self.backend = backend
         self.displays = displays if displays is not None else NoDisplays()
         self.bright_step = bright_step
@@ -66,6 +68,7 @@ class Mixer:
         # Apps stay on their keys after they stop playing (e.g. paused) until they quit.
         self._seen: dict[str, AppInfo] = {}        # last known info per app id
         self._last_listed: dict[str, float] = {}   # clock() when the backend last listed it
+        self._last_played: dict[str, float] = {}   # clock() when it was last making sound
         self._signature: tuple | None = None
         self._last_poll = float("-inf")
         self._last_ping = float("-inf")
@@ -193,30 +196,45 @@ class Mixer:
                 self._send_vol(app_id)
 
     def _with_paused(self, apps: list[AppInfo]) -> list[AppInfo]:
-        """Add apps that dropped out of the backend's list but are still running."""
+        """Decide which apps keep a key.
+
+        - Unpinned apps stay until they've been silent for `forget_after` seconds.
+        - Pinned apps stay while they're running (their key exists anyway; this keeps them
+          showing as running rather than "Not running" while paused).
+        An app that is no longer listed counts as running while backend.app_alive() says so
+        (backends without it: FALLBACK_KEEP seconds after it was last listed).
+        """
         now = self.clock()
         listed = {a.id: a for a in apps}
         for a in apps:
             self._seen[a.id] = a
             self._last_listed[a.id] = now
-        alive = getattr(self.backend, "app_alive", None)
+            if a.playing is not False:
+                self._last_played[a.id] = now
+        pinned = {p["id"] for p in self.pins.slots.values()}
+        alive_fn = getattr(self.backend, "app_alive", None)
+        keep: list[AppInfo] = []
         for app_id, info in list(self._seen.items()):
             if app_id in listed:
-                continue
-            if alive is not None:
+                running = True
+            elif alive_fn is not None:
                 try:
-                    keep = bool(alive(app_id))
+                    running = bool(alive_fn(app_id))
                 except Exception:
                     log.debug("app_alive(%s) failed", app_id, exc_info=True)
-                    keep = False
+                    running = False
             else:
-                keep = now - self._last_listed[app_id] < FALLBACK_KEEP
-            if keep:  # vol/mute None: keep the daemon's own record, don't reset it
-                listed[app_id] = AppInfo(info.id, info.name, info.started)
-            else:
+                running = now - self._last_listed[app_id] < FALLBACK_KEEP
+            recent = now - self._last_played.get(app_id, float("-inf")) < self.forget_after
+            if running and (recent or app_id in pinned):
+                # vol/mute None for apps not in this listing: keep the daemon's own record
+                keep.append(listed.get(app_id) or AppInfo(info.id, info.name, info.started))
+            elif not running:
                 log.debug("app %s is gone", app_id)
-                del self._seen[app_id], self._last_listed[app_id]
-        return list(listed.values())
+                self._seen.pop(app_id, None)
+                self._last_listed.pop(app_id, None)
+                self._last_played.pop(app_id, None)
+        return keep
 
     # --- device messages ---------------------------------------------------
 

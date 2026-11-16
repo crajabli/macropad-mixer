@@ -262,3 +262,51 @@ def test_backend_without_app_alive_keeps_apps_for_a_while():
     clock.t += FALLBACK_KEEP
     mixer.tick()
     assert "old" not in [a.id for a in mixer.apps]
+
+
+def test_unpinned_app_leaves_after_silence_even_while_running():
+    backend = PausableBackend(apps3())
+    clock = Clock()
+    mixer = Mixer(backend, FakeLink(), poll=2.0, clock=clock, forget_after=60.0)
+    mixer.tick()
+    backend.listing = [a for a in backend.listing if a.id != "mid"]  # paused, still running
+    clock.t += 30
+    mixer.tick()
+    assert "mid" in [a.id for a in mixer.apps]       # 30 s of silence: still there
+    clock.t += 31
+    mixer.tick()
+    assert "mid" not in [a.id for a in mixer.apps]   # 61 s: gone, though the app is open
+
+
+def test_listed_but_silent_app_leaves_too():
+    # Windows keeps a paused app's session listed (playing=False) until the app quits.
+    backend = PausableBackend(apps3())
+    clock = Clock()
+    mixer = Mixer(backend, FakeLink(), poll=2.0, clock=clock, forget_after=60.0)
+    mixer.tick()
+    backend.listing = [a if a.id != "old" else AppInfo("old", "Old", 100.0, playing=False)
+                       for a in backend.listing]
+    clock.t += 61
+    mixer.tick()
+    assert [a.id for a in mixer.apps] == ["new", "mid"]
+
+
+def test_pinned_paused_app_stays_running_on_its_key():
+    from macropad_mixer.pins import Pins
+
+    pins = Pins()
+    pins.toggle(2, "mid", "Mid")
+    backend = PausableBackend(apps3())
+    link, clock = FakeLink(), Clock()
+    mixer = Mixer(backend, link, poll=2.0, clock=clock, pins=pins, forget_after=60.0)
+    mixer.tick()
+    backend.listing = [a for a in backend.listing if a.id != "mid"]
+    clock.t += 600
+    link.take()
+    mixer.tick()
+    slot = mixer.layout()[2]
+    assert slot["id"] == "mid" and "run" not in slot  # shown as running, not "Not running"
+    backend.alive.discard("mid")                       # quit
+    clock.t += 2.1
+    mixer.tick()
+    assert mixer.layout()[2]["run"] is False

@@ -103,8 +103,10 @@ class LinuxBackend:
                 a.started = min(a.started, started)
                 a.vol = max(a.vol or 0, vol)
                 a.mute = a.mute and bool(si.mute)
+                a.playing = a.playing or not getattr(si, "corked", False)
             else:
-                apps[name] = AppInfo(name, name, started, vol, bool(si.mute))
+                apps[name] = AppInfo(name, name, started, vol, bool(si.mute),
+                                     playing=not getattr(si, "corked", False))
         self._procs.update(procs)  # replace listed apps' sets, keep the rest for app_alive
         return list(apps.values())
 

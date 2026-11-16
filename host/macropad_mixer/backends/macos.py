@@ -31,7 +31,9 @@ from .base import AppInfo
 log = logging.getLogger(__name__)
 
 FINETUNE_BUNDLE_ID = "com.finetuneapp.FineTune"
-RECENT_OUTPUT_WINDOW = 60.0  # keep apps listed this long after they stop playing
+RECENT_OUTPUT_WINDOW = 60.0  # list apps this long after they stop playing (playing=False then)
+# Background helpers macOS ships here (e.g. PowerChime, the charging sound) are never shown.
+SYSTEM_APP_DIRS = ("/System/Library/",)
 MIN_URL_INTERVAL = 0.06      # at most one `open` per app per 60 ms
 
 # Bundle id prefixes of system audio producers to hide (subset of FineTune's list).
@@ -423,6 +425,8 @@ class MacBackend:
             running = ctypes.c_uint32()
             playing = _get(obj, kAudioProcessPropertyIsRunningOutput, running) and running.value != 0
             resolved = _resolve_app(pid.value)
+            if resolved and resolved[0].startswith(SYSTEM_APP_DIRS):
+                continue
             if resolved:
                 app_path, main_pid = resolved
                 bid, name = _bundle_info(app_path)
@@ -444,7 +448,10 @@ class MacBackend:
             for p in {owner, pid.value}:
                 pids.setdefault(bid, {})[p] = _pid_path(p)
             if bid not in present or started < present[bid].started:
-                present[bid] = AppInfo(bid, name, started)
+                present[bid] = AppInfo(bid, name, started, playing=playing or
+                                       (present[bid].playing if bid in present else False))
+            elif playing:
+                present[bid].playing = True
         listed = [a for a in present.values() if now - self._last_output.get(a.id, float("-inf"))
                   <= RECENT_OUTPUT_WINDOW]
         for a in listed:

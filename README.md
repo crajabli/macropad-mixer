@@ -4,7 +4,8 @@ A hardware per-app volume mixer for the **Adafruit MacroPad RP2040**, like the W
 Volume Mixer on your desk, for macOS and Windows (Linux as a bonus).
 
 - Keys 1-11 are automatically assigned apps that are playing audio, most recently started
-  first. With more than 11 apps, key 11 flips pages.
+  first. An unpinned app leaves its key after 60 s of silence (`--forget-after`); pinned apps
+  stay. With more than 11 apps, key 11 flips pages.
 - Key 12 is always screen brightness (built-in display and external monitors with DDC/CI):
   press it, then turn the knob. Press it again to switch between all displays and each one.
 - Keys light up in each app's brand colour (taken from its icon).

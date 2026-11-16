@@ -57,6 +57,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--backend", choices=BACKENDS, default="auto", help="audio backend (default: auto)")
     ap.add_argument("--bright-step", type=int, default=5,
                     help="brightness percent per knob click on key 12 (default: 5)")
+    ap.add_argument("--forget-after", type=float, default=60.0,
+                    help="seconds of silence before an unpinned app leaves its key (default: 60)")
     ap.add_argument("--poll", type=float, default=2.0, help="seconds between app list polls (default: 2)")
     ap.add_argument("--log-file", help="write logs to this file (rotated at 1 MB) instead of the terminal")
     ap.add_argument("-v", "--verbose", action="store_true", help="debug logging")
@@ -76,7 +78,7 @@ def main(argv: list[str] | None = None) -> None:
 
     mixer = Mixer(backend, link, step=args.step, poll=args.poll, pins=Pins(default_path()),
                   icon_store=default_store_dir(),
-                  displays=displays, bright_step=args.bright_step)
+                  displays=displays, bright_step=args.bright_step, forget_after=args.forget_after)
     logging.getLogger(__name__).info("macropad-mixer started (backend %s)", type(backend).__name__)
     try:
         mixer.run()

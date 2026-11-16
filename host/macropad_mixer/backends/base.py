@@ -14,6 +14,9 @@ class AppInfo:
     started: float          # epoch seconds the app (process) started; used for recent-first order
     vol: int | None = None  # 0-100 if the backend can read it, else None
     mute: bool | None = None
+    # Is it making sound right now? False = listed but silent (e.g. a paused Windows session);
+    # None = the backend can't tell, which counts as playing.
+    playing: bool | None = None
 
 
 class AudioBackend(Protocol):
