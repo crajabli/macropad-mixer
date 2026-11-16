@@ -22,10 +22,17 @@ cp "$HERE/firmware/boot.py" "$DRIVE/"
 # reload on a half-written code.py crashes until the next reload.
 cp "$HERE/firmware/code.py" "$DRIVE/code.tmp" && sync && mv "$DRIVE/code.tmp" "$DRIVE/code.py"
 
+# circup installs the CircuitPython libraries: use it from PATH, else run it through uv.
 if command -v circup >/dev/null 2>&1; then
-  circup --path "$DRIVE" install adafruit_macropad adafruit_display_text
+  CIRCUP=(circup)
+elif command -v uvx >/dev/null 2>&1 || [[ -x "$HOME/.local/bin/uvx" ]]; then
+  CIRCUP=("$(command -v uvx || echo "$HOME/.local/bin/uvx")" --python 3.12 circup)
 else
-  echo "circup not on PATH - skipping library install (pip install circup)" >&2
+  CIRCUP=()
+  echo "circup not found - skipping library install (install uv or circup)" >&2
+fi
+if (( ${#CIRCUP[@]} )); then
+  "${CIRCUP[@]}" --path "$DRIVE" install adafruit_macropad adafruit_display_text
 fi
 
 # Put the installer on the drive so any computer can install the host side with a double-click.
