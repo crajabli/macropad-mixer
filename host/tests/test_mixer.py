@@ -310,3 +310,18 @@ def test_pinned_paused_app_stays_running_on_its_key():
     clock.t += 2.1
     mixer.tick()
     assert mixer.layout()[2]["run"] is False
+
+
+def test_pinned_app_open_but_never_heard_shows_as_running_after_restart():
+    from macropad_mixer.pins import Pins
+
+    pins = Pins()
+    pins.toggle(0, "chrome", "Chrome")
+    pins.toggle(1, "closed", "Closed")
+    backend = PausableBackend([])            # fresh daemon: nothing playing, nothing seen
+    backend.alive = {"chrome"}               # Chrome is open; "closed" isn't
+    mixer = Mixer(backend, FakeLink(), poll=2.0, clock=Clock(), pins=pins)
+    mixer.tick()
+    layout = mixer.layout()
+    assert layout[0]["id"] == "chrome" and "run" not in layout[0]
+    assert layout[1]["id"] == "closed" and layout[1]["run"] is False

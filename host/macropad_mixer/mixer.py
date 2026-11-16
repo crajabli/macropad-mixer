@@ -234,6 +234,18 @@ class Mixer:
                 self._seen.pop(app_id, None)
                 self._last_listed.pop(app_id, None)
                 self._last_played.pop(app_id, None)
+        # Pinned apps we haven't seen since starting (e.g. open but silent after a restart):
+        # show them as running if the backend can tell they are.
+        if alive_fn is not None:
+            kept = {a.id for a in keep}
+            for pin in self.pins.slots.values():
+                if pin["id"] in kept:
+                    continue
+                try:
+                    if alive_fn(pin["id"]):
+                        keep.append(AppInfo(pin["id"], pin["name"], 0.0))
+                except Exception:
+                    log.debug("app_alive(%s) failed", pin["id"], exc_info=True)
         return keep
 
     # --- device messages ---------------------------------------------------

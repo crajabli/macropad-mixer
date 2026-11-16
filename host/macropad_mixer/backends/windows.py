@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any
@@ -554,15 +555,23 @@ class WindowsBackend:
                         return True
                 except psutil.Error:  # NoSuchProcess / ZombieProcess: gone
                     continue
-            # All recorded PIDs are gone (or reused). The audio session may have belonged to a
-            # helper (e.g. a Chrome tab's audio process) while the main exe is still running.
-            for proc in psutil.process_iter(["name"]):
-                if process_matches_app(proc.info.get("name"), app_id):
-                    return True
-            return False
+            # All recorded PIDs are gone (or reused), or we never saw this app (a pinned app
+            # after a restart). The audio session may also have belonged to a helper (e.g. a
+            # Chrome tab's audio process) while the main exe is still running.
+            return any(process_matches_app(name, app_id) for name in self._running_names(psutil))
         except Exception as e:  # noqa: BLE001
             log.debug("app_alive(%r) failed: %r", app_id, e)
             return False
+
+    def _running_names(self, psutil) -> set[str]:
+        """Names of all running processes, cached for 2 s (one scan serves every pinned app)."""
+        now = time.monotonic()
+        cached = getattr(self, "_names_scan", None)
+        if cached is not None and now - cached[0] < 2.0:
+            return cached[1]
+        names = {(p.info.get("name") or "") for p in psutil.process_iter(["name"])}
+        self._names_scan = (now, names)
+        return names
 
     def icon_image(self, app_id: str):
         with self._name_lock:

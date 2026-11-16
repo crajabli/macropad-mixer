@@ -172,6 +172,8 @@ _libc.proc_pidpath.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint32]
 _libc.proc_pidpath.restype = ctypes.c_int
 _libc.proc_pidinfo.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int]
 _libc.proc_pidinfo.restype = ctypes.c_int
+_libc.proc_listallpids.argtypes = [ctypes.c_void_p, ctypes.c_int]
+_libc.proc_listallpids.restype = ctypes.c_int
 try:  # private API (what Activity Monitor and FineTune use for XPC services)
     _responsible_pid = _libc.responsibility_get_pid_responsible_for_pid
     _responsible_pid.argtypes = [ctypes.c_int]
@@ -259,6 +261,38 @@ def _resolve_app(pid: int) -> tuple[str, int] | None:
 
 
 _bundle_cache: dict[str, tuple[str | None, str]] = {}
+
+RUNNING_SCAN_TTL = 2.0  # seconds a scan of running apps is reused
+_running_scan: tuple[float, dict[str, dict[int, str]]] = (float("-inf"), {})
+
+
+def _all_pids() -> list[int]:
+    n = _libc.proc_listallpids(None, 0)
+    if n <= 0:
+        return []
+    buf = (ctypes.c_int * (n + 64))()
+    n = _libc.proc_listallpids(buf, ctypes.sizeof(buf))
+    return [p for p in buf[: max(0, n)] if p > 0]
+
+
+def running_apps() -> dict[str, dict[int, str]]:
+    """bundle id -> {pid: executable path} for every running .app process (cached for 2 s).
+    Used to tell whether a pinned app is open before it has made any sound."""
+    global _running_scan
+    now = time.monotonic()
+    if now - _running_scan[0] < RUNNING_SCAN_TTL:
+        return _running_scan[1]
+    found: dict[str, dict[int, str]] = {}
+    for pid in _all_pids():
+        path = _pid_path(pid)
+        i = path.find(".app/")
+        if i < 0:
+            continue
+        bid, _ = _bundle_info(path[: i + 4])
+        if bid:
+            found.setdefault(bid, {})[pid] = path
+    _running_scan = (now, found)
+    return found
 
 
 def _bundle_info(app_path: str) -> tuple[str | None, str]:
@@ -460,7 +494,17 @@ class MacBackend:
 
     def app_alive(self, app_id: str) -> bool:
         """True while any process we saw for this app is still running the same executable
-        (the path check guards against PID reuse)."""
+        (the path check guards against PID reuse). Apps we never saw playing (a pinned app
+        after a restart) are looked up among all running apps by bundle id."""
+        if app_id not in self._pids:
+            try:
+                procs = running_apps().get(app_id)
+            except Exception:  # noqa: BLE001 - must never raise
+                log.debug("running app scan failed", exc_info=True)
+                return False
+            if procs:
+                self._pids[app_id] = dict(procs)
+            return bool(procs)
         for pid, path in self._pids.get(app_id, {}).items():
             try:
                 if path and _pid_path(pid) == path:

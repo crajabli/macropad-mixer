@@ -237,33 +237,39 @@ def test_app_alive(monkeypatch):
     # Recorded PID still running the same exe: alive, no process_iter fallback.
     fake = _fake_psutil({100: "Spotify.exe"})
     monkeypatch.setitem(sys.modules, "psutil", fake)
+    backend._names_scan = None  # new fake process list: drop the 2 s cache
     assert backend.app_alive("spotify.exe")
     assert fake.process_iter_calls == 0
 
     # PID reused by another exe and nothing else named spotify.exe: dead.
     fake = _fake_psutil({100: "notepad.exe"})
     monkeypatch.setitem(sys.modules, "psutil", fake)
+    backend._names_scan = None  # new fake process list: drop the 2 s cache
     assert not backend.app_alive("spotify.exe")
 
     # AccessDenied on an existing PID counts as alive.
     fake = _fake_psutil({100: "Spotify.exe"}, denied={100})
     monkeypatch.setitem(sys.modules, "psutil", fake)
+    backend._names_scan = None  # new fake process list: drop the 2 s cache
     assert backend.app_alive("spotify.exe")
 
     # Chrome's audio helper (200, 201) exited but the main chrome.exe (300) still runs.
     fake = _fake_psutil({300: "chrome.exe", 400: "explorer.exe"})
     monkeypatch.setitem(sys.modules, "psutil", fake)
+    backend._names_scan = None  # new fake process list: drop the 2 s cache
     assert backend.app_alive("chrome.exe")
     assert fake.process_iter_calls == 1
 
     # Fully quit.
     fake = _fake_psutil({400: "explorer.exe"})
     monkeypatch.setitem(sys.modules, "psutil", fake)
+    backend._names_scan = None  # new fake process list: drop the 2 s cache
     assert not backend.app_alive("chrome.exe")
 
     # Unexpected errors are swallowed.
     fake = _fake_psutil({100: "Spotify.exe"}, boom=True)
     monkeypatch.setitem(sys.modules, "psutil", fake)
+    backend._names_scan = None  # new fake process list: drop the 2 s cache
     assert backend.app_alive("spotify.exe") is False
 
 

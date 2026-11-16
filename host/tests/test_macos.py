@@ -100,3 +100,14 @@ def test_finetune_is_started_when_not_running(monkeypatch):
     backend._finetune_running_checked = float("-inf")
     backend._ensure_finetune_running()
     assert launched == [1]
+
+
+def test_app_alive_finds_apps_never_seen_playing(monkeypatch):
+    from macropad_mixer.backends import macos
+
+    monkeypatch.setattr(macos, "running_apps", lambda: {"com.google.Chrome": {42: "/x"}})
+    backend = macos.MacBackend.__new__(macos.MacBackend)
+    backend._pids = {}
+    assert backend.app_alive("com.google.Chrome")
+    assert backend._pids["com.google.Chrome"] == {42: "/x"}   # tracked from now on
+    assert not backend.app_alive("com.example.closed")
